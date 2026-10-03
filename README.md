@@ -1,4 +1,4 @@
-# Discord channel updates to email
+# Discord announcement email bridge
 
 A Cloudflare Worker polls a Discord Announcement Channel once a minute, verifies Channel Follower crossposts, stores discoveries in D1, and sends one email per configured recipient through Resend. Cloudflare Queues provide at-least-once delivery; D1 and Resend idempotency keys protect retries.
 

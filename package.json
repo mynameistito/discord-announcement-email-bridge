@@ -1,5 +1,5 @@
 {
-  "name": "discord-channel-updates-email",
+  "name": "discord-announcement-email-bridge",
   "version": "0.1.0",
   "private": true,
   "type": "module",

@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "discord-channel-updates-email",
+      "name": "discord-announcement-email-bridge",
       "dependencies": {
         "@effect/sql-d1": "4.0.0",
         "alchemy": "2.0.0-beta.80",

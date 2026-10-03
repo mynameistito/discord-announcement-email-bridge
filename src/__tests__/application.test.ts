@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { DiscordApiError, pollAll, PollingServiceLayer } from "../application";
+import { DiscordApiError, pollAll, pollingServiceLayer } from "../application";
 import type { PollingPorts } from "../application";
 import type { Subscription } from "../domain";
 
@@ -32,14 +32,16 @@ function crosspost(id: string) {
   };
 }
 
-function fakePorts(
-  pages: readonly (readonly unknown[])[],
-  initialCursor: string | null = "100"
-): {
+interface FakePollingPorts {
   readonly ports: PollingPorts;
   readonly cursor: () => string | undefined;
   readonly sent: () => readonly string[];
-} {
+}
+
+function fakePorts(
+  pages: readonly (readonly unknown[])[],
+  initialCursor: string | null = "100"
+): FakePollingPorts {
   let cursorValue: string | undefined = initialCursor ?? undefined;
   let initialized = initialCursor !== null;
   const discovered = new Map<string, string>();
@@ -82,10 +84,13 @@ function fakePorts(
         }),
     },
     source: {
-      fetchAfter: () => Effect.succeed(pages[0] ?? []),
+      fetchAfter: () =>
+        Effect.succeed((pages[0] ?? []).map((raw) => ({ raw }))),
       fetchBefore: () => {
         beforeIndex += 1;
-        return Effect.succeed(pages[beforeIndex] ?? []);
+        return Effect.succeed(
+          (pages[beforeIndex] ?? []).map((raw) => ({ raw }))
+        );
       },
       fetchLatest: () => Effect.succeed([]),
       getWebhook: (id) =>
@@ -112,7 +117,7 @@ describe("announcement discovery integration", () => {
     const olderPage = [crosspost("101")];
     const fake = fakePorts([newestPage, olderPage]);
     await Effect.runPromise(
-      pollAll.pipe(Effect.provide(PollingServiceLayer(fake.ports)))
+      pollAll.pipe(Effect.provide(pollingServiceLayer(fake.ports)))
     );
     expect(fake.cursor()).toBe("200");
     expect(fake.sent()).toHaveLength(100);
@@ -123,10 +128,10 @@ describe("announcement discovery integration", () => {
   it("keeps repeats safe: the persistent uniqueness seam yields one logical delivery", async () => {
     const fake = fakePorts([[crosspost("101")]]);
     await Effect.runPromise(
-      pollAll.pipe(Effect.provide(PollingServiceLayer(fake.ports)))
+      pollAll.pipe(Effect.provide(pollingServiceLayer(fake.ports)))
     );
     await Effect.runPromise(
-      pollAll.pipe(Effect.provide(PollingServiceLayer(fake.ports)))
+      pollAll.pipe(Effect.provide(pollingServiceLayer(fake.ports)))
     );
     expect(fake.sent()).toStrictEqual(["delivery-101"]);
   });
@@ -134,13 +139,13 @@ describe("announcement discovery integration", () => {
   it("does not skip the first message after initializing an empty channel", async () => {
     const fake = fakePorts([[crosspost("101")]], null);
     await Effect.runPromise(
-      pollAll.pipe(Effect.provide(PollingServiceLayer(fake.ports)))
+      pollAll.pipe(Effect.provide(pollingServiceLayer(fake.ports)))
     );
     expect(fake.cursor()).toBe("0");
     expect(fake.sent()).toStrictEqual([]);
 
     await Effect.runPromise(
-      pollAll.pipe(Effect.provide(PollingServiceLayer(fake.ports)))
+      pollAll.pipe(Effect.provide(pollingServiceLayer(fake.ports)))
     );
     expect(fake.sent()).toStrictEqual(["delivery-101"]);
   });
@@ -160,7 +165,7 @@ describe("announcement discovery integration", () => {
     };
     await expect(
       Effect.runPromise(
-        pollAll.pipe(Effect.provide(PollingServiceLayer(ports)))
+        pollAll.pipe(Effect.provide(pollingServiceLayer(ports)))
       )
     ).rejects.toThrow("network error");
     expect(fake.cursor()).toBe("100");

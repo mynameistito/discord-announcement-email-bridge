@@ -4,10 +4,10 @@ import type { WorkerEnv } from "../alchemy.run";
 import {
   BridgeInfrastructureError,
   DiscordApiError,
-  PollingServiceLayer,
+  pollingServiceLayer,
   pollAll,
 } from "./application";
-import type { PollingPorts } from "./application";
+import type { PollingPorts, UnparsedDiscordMessage } from "./application";
 import {
   MessageSchema,
   idempotencyKey,
@@ -30,49 +30,31 @@ const ApiErrorSchema = Schema.Struct({
 
 type ApiError = typeof ApiErrorSchema.Type;
 
+const ResendResponseSchema = Schema.Struct({ id: Schema.String });
+const StoredMessageSchema = Schema.fromJsonString(MessageSchema);
+
+interface ResendEmailPayload {
+  readonly from: string;
+  readonly html: string;
+  readonly subject: string;
+  readonly text: string;
+  readonly to: readonly string[];
+}
+
 /** Cloudflare Worker request, cron, and queue entrypoints. */
 const worker = {
   async fetch(request: Request, env: WorkerEnv): Promise<Response> {
     const url = new URL(request.url);
     if (request.method === "GET" && url.pathname === "/healthz") {
-      return Response.json({
-        status: "ok",
-        version: env.BUILD_VERSION ?? "development",
-        stage: env.STAGE ?? "local",
-      });
+      return healthResponse(env);
     }
-    if (url.pathname.startsWith("/admin/")) {
-      if (!(await authorized(request, Redacted.make(env.ADMIN_TOKEN)))) {
-        return new Response("Unauthorized", { status: 401 });
-      }
-      if (request.method === "POST" && url.pathname === "/admin/poll") {
-        const result = await runPoll(env);
-        return result.ok
-          ? Response.json({ status: "accepted" }, { status: 202 })
-          : Response.json({ error: "poll_failed" }, { status: 503 });
-      }
-      if (request.method === "POST" && url.pathname === "/admin/replay") {
-        const reset = await Effect.runPromiseExit(
-          d1(env.DB, () =>
-            env.DB.prepare(
-              "UPDATE deliveries SET status = 'pending', last_error = NULL, updated_at = CURRENT_TIMESTAMP WHERE status = 'failed'"
-            ).run()
-          )
-        );
-        if (reset._tag === "Failure") {
-          return Response.json({ error: "replay_failed" }, { status: 503 });
-        }
-        const result = await runPoll(env);
-        return result.ok
-          ? Response.json({ status: "replay_queued" }, { status: 202 })
-          : Response.json({ error: "replay_failed" }, { status: 503 });
-      }
-      if (request.method === "GET" && url.pathname === "/admin/status") {
-        return statusResponse(env);
-      }
-      return new Response("Not Found", { status: 404 });
+    if (!url.pathname.startsWith("/admin/")) {
+      return notFoundResponse();
     }
-    return new Response("Not Found", { status: 404 });
+    if (!(await authorized(request, Redacted.make(env.ADMIN_TOKEN)))) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+    return adminResponse(request.method, url.pathname, env);
   },
 
   async queue(batch: MessageBatch<unknown>, env: WorkerEnv): Promise<void> {
@@ -110,20 +92,20 @@ const worker = {
         deliver(env, payload.deliveryId, payload.announcementId)
       );
       if (result._tag === "Failure") {
-        const error = Cause.squash(result.cause);
-        const errorMessage = safeError(error);
+        const errorMessage = safeError(result.cause);
+        const retryable = isRetryable(result.cause);
         const recorded = await Effect.runPromiseExit(
           recordDeliveryFailure(
             env.DB,
             payload.deliveryId,
             errorMessage,
-            isRetryable(error)
+            retryable
           )
         );
         if (recorded._tag === "Failure") {
           throw Cause.squash(recorded.cause);
         }
-        if (isRetryable(error)) {
+        if (retryable) {
           console.warn(
             JSON.stringify({
               event: "delivery.retry",
@@ -132,7 +114,7 @@ const worker = {
               error: errorMessage,
             })
           );
-          throw error;
+          throw Cause.squash(result.cause);
         }
         console.error(
           JSON.stringify({
@@ -160,6 +142,59 @@ const worker = {
 
 export default worker;
 
+function healthResponse(env: WorkerEnv): Response {
+  return Response.json({
+    status: "ok",
+    version: env.BUILD_VERSION ?? "development",
+    stage: env.STAGE ?? "local",
+  });
+}
+
+function notFoundResponse(): Response {
+  return new Response("Not Found", { status: 404 });
+}
+
+function adminResponse(
+  method: string,
+  pathname: string,
+  env: WorkerEnv
+): Promise<Response> {
+  if (method === "POST" && pathname === "/admin/poll") {
+    return pollResponse(env);
+  }
+  if (method === "POST" && pathname === "/admin/replay") {
+    return replayResponse(env);
+  }
+  if (method === "GET" && pathname === "/admin/status") {
+    return statusResponse(env);
+  }
+  return Promise.resolve(notFoundResponse());
+}
+
+async function pollResponse(env: WorkerEnv): Promise<Response> {
+  const result = await runPoll(env);
+  return result.ok
+    ? Response.json({ status: "accepted" }, { status: 202 })
+    : Response.json({ error: "poll_failed" }, { status: 503 });
+}
+
+async function replayResponse(env: WorkerEnv): Promise<Response> {
+  const reset = await Effect.runPromiseExit(
+    d1(() =>
+      env.DB.prepare(
+        "UPDATE deliveries SET status = 'pending', last_error = NULL, updated_at = CURRENT_TIMESTAMP WHERE status = 'failed'"
+      ).run()
+    )
+  );
+  if (reset._tag === "Failure") {
+    return Response.json({ error: "replay_failed" }, { status: 503 });
+  }
+  const result = await runPoll(env);
+  return result.ok
+    ? Response.json({ status: "replay_queued" }, { status: 202 })
+    : Response.json({ error: "replay_failed" }, { status: 503 });
+}
+
 async function runPoll(
   env: WorkerEnv
 ): Promise<
@@ -171,15 +206,15 @@ async function runPoll(
   }
   const seed = await Effect.runPromiseExit(ensureSubscription(env.DB, config));
   if (seed._tag === "Failure") {
-    return { ok: false, error: safeError(Cause.squash(seed.cause)) };
+    return { ok: false, error: safeError(seed.cause) };
   }
   const ports = createPollingPorts(env);
   const result = await Effect.runPromiseExit(
-    pollAll.pipe(Effect.provide(PollingServiceLayer(ports)))
+    pollAll.pipe(Effect.provide(pollingServiceLayer(ports)))
   );
   return result._tag === "Success"
     ? { ok: true }
-    : { error: safeError(Cause.squash(result.cause)), ok: false };
+    : { error: safeError(result.cause), ok: false };
 }
 
 function subscriptionFromEnv(env: WorkerEnv): Subscription | undefined {
@@ -195,10 +230,12 @@ function subscriptionFromEnv(env: WorkerEnv): Subscription | undefined {
     destinationGuildId: env.DISCORD_GUILD_ID,
     emailTo: env.EMAIL_TO,
     id: env.DISCORD_TARGET_CHANNEL_ID,
-    ...(env.SOURCE_GUILD_ID ? { sourceGuildId: env.SOURCE_GUILD_ID } : {}),
+    ...(env.SOURCE_GUILD_ID
+      ? { sourceGuildId: env.SOURCE_GUILD_ID }
+      : undefined),
     ...(env.SOURCE_CHANNEL_ID
       ? { sourceChannelId: env.SOURCE_CHANNEL_ID }
-      : {}),
+      : undefined),
   };
 }
 
@@ -211,7 +248,7 @@ function createPollingPorts(env: WorkerEnv): PollingPorts {
       }).pipe(Effect.asVoid),
     repository: {
       cursor: (subscriptionId) =>
-        d1(env.DB, () =>
+        d1(() =>
           env.DB.prepare(
             "SELECT last_message_id FROM channel_cursors WHERE subscription_id = ?"
           )
@@ -221,13 +258,13 @@ function createPollingPorts(env: WorkerEnv): PollingPorts {
           Effect.map((row) => (row ? (row.last_message_id ?? "0") : undefined))
         ),
       enabledSubscriptions: () =>
-        d1(env.DB, () =>
+        d1(() =>
           env.DB.prepare(
             "SELECT id, destination_guild_id, destination_channel_id, source_guild_id, source_channel_id, email_to FROM subscriptions WHERE enabled = 1"
           ).all<SubscriptionRow>()
         ).pipe(Effect.map((result) => result.results.map(toSubscription))),
       initializeCursor: (subscriptionId, messageId) =>
-        d1(env.DB, () =>
+        d1(() =>
           env.DB.prepare(
             "INSERT INTO channel_cursors (subscription_id, last_message_id) VALUES (?, ?) ON CONFLICT(subscription_id) DO NOTHING"
           )
@@ -235,7 +272,7 @@ function createPollingPorts(env: WorkerEnv): PollingPorts {
             .run()
         ).pipe(Effect.asVoid),
       markEnqueued: (deliveryId) =>
-        d1(env.DB, () =>
+        d1(() =>
           env.DB.prepare(
             "UPDATE deliveries SET status = 'queued', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'pending'"
           )
@@ -243,7 +280,7 @@ function createPollingPorts(env: WorkerEnv): PollingPorts {
             .run()
         ).pipe(Effect.asVoid),
       pendingDeliveries: (subscriptionId) =>
-        d1(env.DB, () =>
+        d1(() =>
           env.DB.prepare(
             "SELECT d.id AS delivery_id, d.announcement_id FROM deliveries d JOIN announcements a ON a.id = d.announcement_id WHERE a.subscription_id = ? AND d.status = 'pending' ORDER BY d.created_at LIMIT 500"
           )
@@ -267,23 +304,14 @@ function createPollingPorts(env: WorkerEnv): PollingPorts {
         discordMessages(env, channelId, { before }),
       fetchLatest: (channelId) => discordMessages(env, channelId, {}),
       getWebhook: (webhookId) =>
-        discordGet(env, `/webhooks/${encodeURIComponent(webhookId)}`).pipe(
-          Effect.flatMap((payload) =>
-            Schema.decodeUnknownEffect(WebhookSchema)(payload)
-          ),
-          Effect.mapError((error) =>
-            error instanceof Schema.SchemaError
-              ? discordError(
-                  "Discord returned invalid webhook metadata",
-                  502,
-                  false
-                )
-              : error
-          ),
-          Effect.catch((error) =>
-            error.status === 404
-              ? Effect.succeed<undefined>(undefined)
-              : Effect.fail(error)
+        discordGet(
+          env,
+          `/webhooks/${encodeURIComponent(webhookId)}`,
+          WebhookSchema
+        ).pipe(
+          Effect.catchIf(
+            (error) => error.status === 404,
+            () => Effect.succeed<undefined>(undefined)
           )
         ),
     },
@@ -294,7 +322,7 @@ function discordMessages(
   env: WorkerEnv,
   channelId: string,
   pagination: { readonly after?: string; readonly before?: string }
-) {
+): Effect.Effect<readonly UnparsedDiscordMessage[], DiscordApiError> {
   const query = new URLSearchParams({ limit: "100" });
   if (pagination.after) {
     query.set("after", pagination.after);
@@ -304,32 +332,26 @@ function discordMessages(
   }
   return discordGet(
     env,
-    `/channels/${encodeURIComponent(channelId)}/messages?${query.toString()}`
-  ).pipe(
-    Effect.flatMap((value) =>
-      Effect.try({
-        catch: () =>
-          discordError("Discord returned invalid messages", 502, false),
-        try: () => {
-          if (!Array.isArray(value)) {
-            throw new TypeError("Expected Discord message array");
-          }
-          return value;
-        },
-      })
-    )
-  );
+    `/channels/${encodeURIComponent(channelId)}/messages?${query.toString()}`,
+    Schema.Array(Schema.Unknown)
+  ).pipe(Effect.map((messages) => messages.map((raw) => ({ raw }))));
 }
 
-function discordGet(
+function discordGet<T>(
   env: WorkerEnv,
-  path: string
-): Effect.Effect<unknown, DiscordApiError> {
+  path: string,
+  schema: Schema.ConstraintDecoder<T, never>
+): Effect.Effect<T, DiscordApiError> {
   return Effect.tryPromise({
-    catch: (cause) =>
-      isDiscordApiError(cause)
-        ? cause
-        : discordError("Discord REST request failed", 503, true),
+    catch: (cause) => {
+      if (cause instanceof Schema.SchemaError) {
+        return discordError("Discord returned an invalid response", 502, false);
+      }
+      if (isDiscordApiError(cause)) {
+        return cause;
+      }
+      return discordError("Discord REST request failed", 503, true);
+    },
     try: async () => {
       if (!env.DISCORD_BOT_TOKEN) {
         throw discordError("Discord bot token is not configured", 500, false);
@@ -347,7 +369,8 @@ function discordGet(
           retryable
         );
       }
-      return response.json() as Promise<unknown>;
+      const payload: unknown = await response.json();
+      return Schema.decodeUnknownSync(schema)(payload);
     },
   });
 }
@@ -399,7 +422,7 @@ function persistBatch(
       );
     }
     for (let offset = 0; offset < statements.length; offset += 100) {
-      const result = yield* d1(env.DB, () =>
+      const result = yield* d1(() =>
         env.DB.batch(statements.slice(offset, offset + 100))
       );
       if (result.some((entry) => !entry.success)) {
@@ -413,7 +436,7 @@ function persistBatch(
 
 function deliver(env: WorkerEnv, deliveryId: string, announcementId: string) {
   return Effect.gen(function* deliverEffect() {
-    const delivery = yield* d1(env.DB, () =>
+    const delivery = yield* d1(() =>
       env.DB.prepare(
         "SELECT id, announcement_id, recipient, status, idempotency_key FROM deliveries WHERE id = ? AND announcement_id = ?"
       )
@@ -427,7 +450,7 @@ function deliver(env: WorkerEnv, deliveryId: string, announcementId: string) {
     ) {
       return;
     }
-    const announcementRow = yield* d1(env.DB, () =>
+    const announcementRow = yield* d1(() =>
       env.DB.prepare(
         "SELECT normalized_payload, source_guild_id, source_channel_id, source_message_id, follower_webhook_id, subscription_id FROM announcements WHERE id = ?"
       )
@@ -442,12 +465,8 @@ function deliver(env: WorkerEnv, deliveryId: string, announcementId: string) {
         )
       );
     }
-    const stored = yield* Effect.try({
-      catch: () => infrastructureError("decode_announcement", "invalid JSON"),
-      try: (): unknown => JSON.parse(announcementRow.normalized_payload),
-    });
-    const message = yield* Schema.decodeUnknownEffect(MessageSchema)(
-      stored
+    const message = yield* Schema.decodeUnknownEffect(StoredMessageSchema)(
+      announcementRow.normalized_payload
     ).pipe(
       Effect.mapError(() =>
         infrastructureError("decode_announcement", "invalid stored message")
@@ -475,7 +494,7 @@ function deliver(env: WorkerEnv, deliveryId: string, announcementId: string) {
       },
       delivery.idempotency_key
     );
-    yield* d1(env.DB, () =>
+    yield* d1(() =>
       env.DB.prepare(
         "UPDATE deliveries SET status = 'sent', resend_email_id = ?, attempts = attempts + 1, updated_at = CURRENT_TIMESTAMP, sent_at = CURRENT_TIMESTAMP, last_error = NULL WHERE id = ? AND status != 'sent'"
       )
@@ -491,7 +510,7 @@ function deliver(env: WorkerEnv, deliveryId: string, announcementId: string) {
 
 function resend(
   env: WorkerEnv,
-  payload: Record<string, unknown>,
+  payload: ResendEmailPayload,
   key: string
 ): Effect.Effect<{ readonly id: string }, ApiError> {
   return Effect.tryPromise({
@@ -514,7 +533,7 @@ function resend(
         },
         body: JSON.stringify(payload),
       });
-      const body: unknown = await response.json().catch(() => ({}));
+      const body: unknown = await response.json();
       if (!response.ok) {
         const retryable =
           response.status === 409 ||
@@ -529,23 +548,17 @@ function resend(
         );
         throw error;
       }
-      const id =
-        typeof body === "object" &&
-        body !== null &&
-        "id" in body &&
-        typeof body.id === "string"
-          ? body.id
-          : undefined;
-      if (!id) {
+      const parsed = Schema.decodeUnknownOption(ResendResponseSchema)(body);
+      if (parsed._tag === "None") {
         throw apiError("Resend response was missing an email ID", 502, true);
       }
-      return { id };
+      return parsed.value;
     },
   });
 }
 
 function ensureSubscription(db: D1Database, subscription: Subscription) {
-  return d1(db, () =>
+  return d1(() =>
     db.batch([
       db
         .prepare(
@@ -570,52 +583,48 @@ function ensureSubscription(db: D1Database, subscription: Subscription) {
 
 function statusResponse(env: WorkerEnv): Promise<Response> {
   return Effect.runPromise(
-    d1(env.DB, () =>
+    d1(() =>
       env.DB.prepare(
         "SELECT (SELECT MAX(updated_at) FROM channel_cursors) AS last_poll, (SELECT COUNT(*) FROM deliveries WHERE status = 'pending') AS pending, (SELECT COUNT(*) FROM deliveries WHERE status = 'failed') AS failed"
       ).first<StatusRow>()
     ).pipe(
-      Effect.map((row) =>
-        Response.json({
-          failedDeliveries: row?.failed ?? 0,
-          lastPoll: row?.last_poll ?? null,
-          pendingDeliveries: row?.pending ?? 0,
-        })
-      ),
-      Effect.catch(() =>
-        Effect.succeed(
-          Response.json({ error: "status_unavailable" }, { status: 503 })
-        )
-      )
+      Effect.match({
+        onFailure: () =>
+          Response.json({ error: "status_unavailable" }, { status: 503 }),
+        onSuccess: (row) =>
+          Response.json({
+            failedDeliveries: row?.failed ?? 0,
+            lastPoll: row?.last_poll ?? null,
+            pendingDeliveries: row?.pending ?? 0,
+          }),
+      })
     )
   );
 }
 
-function authorized(
+async function authorized(
   request: Request,
   expected: Redacted.Redacted<string>
 ): Promise<boolean> {
   const supplied =
     request.headers.get("authorization")?.replace(/^Bearer\s+/iu, "") ?? "";
-  return Promise.all([
+  const [left, right] = await Promise.all([
     crypto.subtle.digest("SHA-256", new TextEncoder().encode(supplied)),
     crypto.subtle.digest(
       "SHA-256",
       new TextEncoder().encode(Redacted.value(expected))
     ),
-  ]).then(([left, right]) => {
-    const a = new Uint8Array(left);
-    const b = new Uint8Array(right);
-    let mismatch = a.length ^ b.length;
-    for (let index = 0; index < a.length; index += 1) {
-      mismatch |= (a[index] ?? 0) ^ (b[index] ?? 0);
-    }
-    return mismatch === 0 && supplied.length > 0;
-  });
+  ]);
+  const a = new Uint8Array(left);
+  const b = new Uint8Array(right);
+  let mismatch = a.length ^ b.length;
+  for (let index = 0; index < a.length; index += 1) {
+    mismatch |= (a[index] ?? 0) ^ (b[index] ?? 0);
+  }
+  return mismatch === 0 && supplied.length > 0;
 }
 
 function d1<A>(
-  db: D1Database,
   operation: () => Promise<A>
 ): Effect.Effect<A, BridgeInfrastructureError> {
   return Effect.tryPromise({
@@ -630,7 +639,7 @@ function recordDeliveryFailure(
   error: string,
   retryable: boolean
 ) {
-  return d1(db, () =>
+  return d1(() =>
     db
       .prepare(
         "UPDATE deliveries SET status = ?, attempts = attempts + 1, last_error = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status != 'sent'"
@@ -641,7 +650,7 @@ function recordDeliveryFailure(
 }
 
 function markDeadLetterFailure(db: D1Database, deliveryId: string) {
-  return d1(db, () =>
+  return d1(() =>
     db
       .prepare(
         "UPDATE deliveries SET status = 'failed', last_error = 'queue_retry_exhausted', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status != 'sent'"
@@ -695,27 +704,23 @@ function isApiError(error: unknown): error is ApiError {
 }
 
 function isDiscordApiError(error: unknown): error is DiscordApiError {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "_tag" in error &&
-    error._tag === "DiscordApiError"
-  );
+  return error instanceof DiscordApiError;
 }
 
-function isRetryable(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "retryable" in error &&
-    error.retryable === true
-  );
+function isRetryable(cause: Cause.Cause<unknown>): boolean {
+  const failure = Cause.findErrorOption(cause);
+  if (failure._tag === "None") {
+    return false;
+  }
+  if (failure.value instanceof DiscordApiError) {
+    return failure.value.retryable;
+  }
+  const parsed = Schema.decodeUnknownOption(ApiErrorSchema)(failure.value);
+  return parsed._tag === "Some" && parsed.value.retryable;
 }
 
-function safeError(error: unknown): string {
-  return error instanceof Error
-    ? error.message.slice(0, 300)
-    : "unexpected_failure";
+function safeError(cause: Cause.Cause<unknown>): string {
+  return Cause.pretty(cause).slice(0, 300);
 }
 
 function toSubscription(row: SubscriptionRow): Subscription {
@@ -724,10 +729,12 @@ function toSubscription(row: SubscriptionRow): Subscription {
     destinationGuildId: row.destination_guild_id,
     emailTo: row.email_to,
     id: row.id,
-    ...(row.source_guild_id ? { sourceGuildId: row.source_guild_id } : {}),
+    ...(row.source_guild_id
+      ? { sourceGuildId: row.source_guild_id }
+      : undefined),
     ...(row.source_channel_id
       ? { sourceChannelId: row.source_channel_id }
-      : {}),
+      : undefined),
   };
 }
 

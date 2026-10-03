@@ -89,16 +89,11 @@ export function classifyFollowerMessage(
     !isCrosspost ||
     !reference ||
     !message.webhook_id ||
-    webhook?.id !== message.webhook_id ||
-    webhook.type !== 2 ||
-    webhook.source_guild?.id !== reference.guild_id ||
-    webhook.source_channel?.id !== reference.channel_id ||
-    message.channel_id !== subscription.destinationChannelId ||
-    (subscription.sourceGuildId !== undefined &&
-      reference.guild_id !== subscription.sourceGuildId) ||
-    (subscription.sourceChannelId !== undefined &&
-      reference.channel_id !== subscription.sourceChannelId)
+    !matchesFollowerWebhook(message, webhook, reference)
   ) {
+    return undefined;
+  }
+  if (!matchesSubscription(message, subscription, reference)) {
     return undefined;
   }
   return {
@@ -109,6 +104,40 @@ export function classifyFollowerMessage(
     sourceMessageId: reference.message_id,
     subscriptionId: subscription.id,
   };
+}
+
+function matchesFollowerWebhook(
+  message: DiscordMessage,
+  webhook: FollowerWebhook | undefined,
+  reference: NonNullable<DiscordMessage["message_reference"]>
+): boolean {
+  if (!message.webhook_id || webhook?.id !== message.webhook_id) {
+    return false;
+  }
+  if (webhook.type !== 2 || webhook.source_guild?.id !== reference.guild_id) {
+    return false;
+  }
+  return webhook.source_channel?.id === reference.channel_id;
+}
+
+function matchesSubscription(
+  message: DiscordMessage,
+  subscription: Subscription,
+  reference: NonNullable<DiscordMessage["message_reference"]>
+): boolean {
+  if (message.channel_id !== subscription.destinationChannelId) {
+    return false;
+  }
+  if (
+    subscription.sourceGuildId !== undefined &&
+    reference.guild_id !== subscription.sourceGuildId
+  ) {
+    return false;
+  }
+  return (
+    subscription.sourceChannelId === undefined ||
+    reference.channel_id === subscription.sourceChannelId
+  );
 }
 
 /** Compare Discord snowflakes without converting 64-bit values to Number. */
@@ -216,23 +245,28 @@ export function idempotencyKey(
   });
 }
 
-/** Safely decode an untrusted Discord message, isolating per-message failures. */
-export function decodeMessage(
-  input: unknown
-): Effect.Effect<DiscordMessage, Schema.SchemaError> {
-  return Schema.decodeUnknownEffect(MessageSchema)(input);
-}
-
 function escapeHtml(value: string): string {
   return value.replaceAll(/[&<>"']/gu, (character) => {
-    const entities: Record<string, string> = {
-      '"': "&quot;",
-      "&": "&amp;",
-      "'": "&#39;",
-      "<": "&lt;",
-      ">": "&gt;",
-    };
-    return entities[character] ?? character;
+    switch (character) {
+      case '"': {
+        return "&quot;";
+      }
+      case "&": {
+        return "&amp;";
+      }
+      case "'": {
+        return "&#39;";
+      }
+      case "<": {
+        return "&lt;";
+      }
+      case ">": {
+        return "&gt;";
+      }
+      default: {
+        return character;
+      }
+    }
   });
 }
 

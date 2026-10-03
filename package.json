@@ -11,7 +11,8 @@
     "build": "bun build src/worker.ts --target=browser --outdir=dist",
     "dev": "alchemy dev",
     "deploy": "alchemy deploy",
-    "fix": "ultracite fix"
+    "fix": "ultracite fix",
+    "prepare": "lefthook install"
   },
   "dependencies": {
     "@effect/sql-d1": "4.0.0",
@@ -24,9 +25,13 @@
     "@effect/platform-bun": "4.0.0",
     "@effect/platform-node": "4.0.0",
     "@types/bun": "1.4.2",
-    "oxfmt": "latest",
-    "oxlint": "latest",
-    "typescript": "7.0.2",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "eslint-plugin-github": "6.1.2",
+    "eslint-plugin-sonarjs": "^4.2.1",
+    "lefthook": "^2.1.16",
+    "oxfmt": "^0.71.0",
+    "oxlint": "^1.86.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
     "ultracite": "7.12.2",
     "vitest": "5.0.2"
   }

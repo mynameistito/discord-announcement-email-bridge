@@ -4,8 +4,8 @@ import { describe, expect, it } from "vitest";
 import {
   classifyFollowerMessage,
   compareSnowflakes,
-  decodeMessage,
   idempotencyKey,
+  MessageSchema,
   oldestFirst,
   renderHtml,
   renderText,
@@ -61,13 +61,15 @@ const webhook = {
 
 describe("Discord payloads and follower classification", () => {
   it("decodes the required untrusted message subset", async () => {
-    const decoded = await Effect.runPromise(decodeMessage(message("100")));
+    const decoded = await Effect.runPromise(
+      Schema.decodeUnknownEffect(MessageSchema)(message("100"))
+    );
     expect(decoded.id).toBe("100");
   });
 
   it("rejects malformed payloads", async () => {
     await expect(
-      Effect.runPromise(decodeMessage({ id: 1 }))
+      Effect.runPromise(Schema.decodeUnknownEffect(MessageSchema)({ id: 1 }))
     ).rejects.toBeInstanceOf(Schema.SchemaError);
   });
 
@@ -166,7 +168,7 @@ describe("snowflakes and email rendering", () => {
     });
   });
 
-  it("uses stable logical email identity", () => {
+  it("uses stable logical email identity", async () => {
     const announcement = classifyFollowerMessage(
       message("100"),
       webhook,
@@ -175,12 +177,11 @@ describe("snowflakes and email rendering", () => {
     if (!announcement) {
       throw new Error("fixture should classify");
     }
-    return Promise.all([
+    const [first, second] = await Promise.all([
       Effect.runPromise(idempotencyKey(announcement, "recipient@example.test")),
       Effect.runPromise(idempotencyKey(announcement, "RECIPIENT@example.test")),
-    ]).then(([first, second]) => {
-      expect(first).toMatch(/^discord-follow\/sub-1\/100\/[a-f0-9]{64}$/u);
-      expect(second).toStrictEqual(first);
-    });
+    ]);
+    expect(first).toMatch(/^discord-follow\/sub-1\/100\/[a-f0-9]{64}$/u);
+    expect(second).toStrictEqual(first);
   });
 });

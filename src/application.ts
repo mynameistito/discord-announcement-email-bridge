@@ -1,9 +1,9 @@
-import { Context, Effect, Layer } from "effect";
+import { Context, Effect, Layer, Schema } from "effect";
 
 import {
+  MessageSchema,
   classifyFollowerMessage,
   compareSnowflakes,
-  decodeMessage,
   oldestFirst,
 } from "./domain";
 import type {
@@ -12,6 +12,13 @@ import type {
   FollowerWebhook,
   Subscription,
 } from "./domain";
+
+const MessageIdSchema = Schema.Struct({ id: Schema.String });
+
+/** A Discord message payload held at the REST-to-domain decoding boundary. */
+export interface UnparsedDiscordMessage {
+  readonly raw: unknown;
+}
 
 /** A retryable Discord REST or payload failure. */
 export class DiscordApiError extends Error {
@@ -64,14 +71,14 @@ export interface PollingPorts {
     readonly fetchAfter: (
       channelId: string,
       after: string
-    ) => Effect.Effect<readonly unknown[], DiscordApiError>;
+    ) => Effect.Effect<readonly UnparsedDiscordMessage[], DiscordApiError>;
     readonly fetchBefore: (
       channelId: string,
       before: string
-    ) => Effect.Effect<readonly unknown[], DiscordApiError>;
+    ) => Effect.Effect<readonly UnparsedDiscordMessage[], DiscordApiError>;
     readonly fetchLatest: (
       channelId: string
-    ) => Effect.Effect<readonly unknown[], DiscordApiError>;
+    ) => Effect.Effect<readonly UnparsedDiscordMessage[], DiscordApiError>;
     readonly getWebhook: (
       webhookId: string
     ) => Effect.Effect<FollowerWebhook | undefined, DiscordApiError>;
@@ -112,7 +119,7 @@ export class PollingService extends Context.Service<
 >()("discord-email/PollingService") {}
 
 /** Test or production implementation layer for polling. */
-export const PollingServiceLayer = (
+export const pollingServiceLayer = (
   ports: PollingPorts
 ): Layer.Layer<PollingService> => Layer.succeed(PollingService, ports);
 
@@ -129,46 +136,89 @@ function pollSubscription(ports: PollingPorts, subscription: Subscription) {
   return Effect.gen(function* pollSubscriptionEffect() {
     const cursor = yield* ports.repository.cursor(subscription.id);
     if (cursor === undefined) {
-      const latest = yield* ports.source.fetchLatest(
-        subscription.destinationChannelId
-      );
-      const ids = latest
-        .flatMap(readMessageId)
-        .filter((id): id is string => id !== undefined);
-      const lastId = ids.toSorted(compareSnowflakes).at(-1);
-      yield* ports.repository.initializeCursor(subscription.id, lastId);
+      yield* initializeCursor(ports, subscription);
       return;
     }
+    const history = yield* fetchHistory(ports, subscription, cursor);
+    const announcements = yield* classifyMessages(
+      ports,
+      subscription,
+      history.messages
+    );
+    yield* persistAndEnqueue(
+      ports,
+      subscription,
+      announcements,
+      history.highWater
+    );
+  });
+}
+
+function initializeCursor(ports: PollingPorts, subscription: Subscription) {
+  return Effect.gen(function* initializeCursorEffect() {
+    const latest = yield* ports.source.fetchLatest(
+      subscription.destinationChannelId
+    );
+    const ids = latest.flatMap((payload) => {
+      const parsed = Schema.decodeUnknownOption(MessageIdSchema)(payload.raw);
+      return parsed._tag === "Some" && /^\d+$/u.test(parsed.value.id)
+        ? [parsed.value.id]
+        : [];
+    });
+    yield* ports.repository.initializeCursor(
+      subscription.id,
+      ids.toSorted(compareSnowflakes).at(-1)
+    );
+  });
+}
+
+function fetchHistory(
+  ports: PollingPorts,
+  subscription: Subscription,
+  cursor: string
+) {
+  return Effect.gen(function* fetchHistoryEffect() {
     let highWater = cursor;
-    let hasMore = true;
-    const decoded: DiscordMessage[] = [];
+    const messages: DiscordMessage[] = [];
     const firstPage = yield* ports.source.fetchAfter(
       subscription.destinationChannelId,
       cursor
     );
     let page = firstPage;
-    while (hasMore) {
-      const messages: DiscordMessage[] = [];
+    for (;;) {
+      const pageMessages: DiscordMessage[] = [];
       for (const payload of page) {
-        const rawId = readMessageId(payload);
+        const parsedId = Schema.decodeUnknownOption(MessageIdSchema)(
+          payload.raw
+        );
+        const rawId =
+          parsedId._tag === "Some" && /^\d+$/u.test(parsedId.value.id)
+            ? parsedId.value.id
+            : undefined;
         if (rawId && compareSnowflakes(rawId, highWater) > 0) {
           highWater = rawId;
         }
-        const message = yield* decodeMessage(payload).pipe(
-          Effect.catch(() => Effect.succeed<undefined>(undefined))
-        );
-        if (message) {
-          messages.push(message);
+        const decoded = yield* Schema.decodeUnknownEffect(MessageSchema)(
+          payload.raw
+        ).pipe(Effect.option);
+        if (decoded._tag === "Some") {
+          pageMessages.push(decoded.value);
         }
       }
-      decoded.push(
-        ...messages.filter(
+      messages.push(
+        ...pageMessages.filter(
           (message) => compareSnowflakes(message.id, cursor) > 0
         )
       );
       const ids = page
-        .flatMap(readMessageId)
-        .filter((id): id is string => id !== undefined)
+        .flatMap((payload) => {
+          const parsed = Schema.decodeUnknownOption(MessageIdSchema)(
+            payload.raw
+          );
+          return parsed._tag === "Some" && /^\d+$/u.test(parsed.value.id)
+            ? [parsed.value.id]
+            : [];
+        })
         .toSorted(compareSnowflakes);
       const [oldest] = ids;
       if (
@@ -178,30 +228,35 @@ function pollSubscription(ports: PollingPorts, subscription: Subscription) {
       ) {
         break;
       }
-      hasMore = true;
       page = yield* ports.source.fetchBefore(
         subscription.destinationChannelId,
         oldest
       );
     }
+    return { highWater, messages: oldestFirst(messages) };
+  });
+}
 
+function classifyMessages(
+  ports: PollingPorts,
+  subscription: Subscription,
+  messages: readonly DiscordMessage[]
+) {
+  return Effect.gen(function* classifyMessagesEffect() {
     const announcements: Announcement[] = [];
     const webhooks = new Map<string, FollowerWebhook | undefined>();
-    for (const message of oldestFirst(decoded)) {
+    for (const message of messages) {
       if (!message.webhook_id || ((message.flags ?? 0) & 2) === 0) {
         continue;
       }
       let webhook = webhooks.get(message.webhook_id);
       if (!webhooks.has(message.webhook_id)) {
-        webhook = yield* ports.source
-          .getWebhook(message.webhook_id)
-          .pipe(
-            Effect.catch((error) =>
-              error.status === 404
-                ? Effect.succeed<undefined>(undefined)
-                : Effect.fail(error)
-            )
-          );
+        webhook = yield* ports.source.getWebhook(message.webhook_id).pipe(
+          Effect.catchIf(
+            (error) => error.status === 404,
+            () => Effect.succeed<undefined>(undefined)
+          )
+        );
         webhooks.set(message.webhook_id, webhook);
       }
       const announcement = classifyFollowerMessage(
@@ -222,7 +277,17 @@ function pollSubscription(ports: PollingPorts, subscription: Subscription) {
         announcements.push(announcement);
       }
     }
+    return announcements;
+  });
+}
 
+function persistAndEnqueue(
+  ports: PollingPorts,
+  subscription: Subscription,
+  announcements: readonly Announcement[],
+  highWater: string
+) {
+  return Effect.gen(function* persistAndEnqueueEffect() {
     // Persist all discoveries and the high-water mark before queueing. The repository
     // implementation uses D1 uniqueness constraints and a transaction/batch.
     yield* ports.repository.persistDiscoveryBatch(
@@ -236,12 +301,4 @@ function pollSubscription(ports: PollingPorts, subscription: Subscription) {
       yield* ports.repository.markEnqueued(delivery.deliveryId);
     }
   });
-}
-
-function readMessageId(input: unknown): string | undefined {
-  if (typeof input !== "object" || input === null || !("id" in input)) {
-    return undefined;
-  }
-  const { id } = input;
-  return typeof id === "string" && /^\d+$/u.test(id) ? id : undefined;
 }

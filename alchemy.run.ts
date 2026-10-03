@@ -32,7 +32,12 @@ export const BridgeWorker = Cloudflare.Worker("DiscordEmailBridge", {
     DISCORD_TARGET_CHANNEL_ID: Config.String("DISCORD_TARGET_CHANNEL_ID").pipe(
       Config.withDefault("")
     ),
-    EMAIL_FROM: Config.String("EMAIL_FROM").pipe(Config.withDefault("")),
+    EMAIL_FROM_EMAIL: Config.String("EMAIL_FROM_EMAIL").pipe(
+      Config.withDefault("")
+    ),
+    EMAIL_FROM_NAME: Config.String("EMAIL_FROM_NAME").pipe(
+      Config.withDefault("")
+    ),
     EMAIL_TO: Config.String("EMAIL_TO").pipe(Config.withDefault("")),
     RESEND_API_KEY: Config.Redacted("RESEND_API_KEY").pipe(
       Config.withDefault("")

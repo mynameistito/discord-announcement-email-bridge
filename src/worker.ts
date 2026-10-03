@@ -467,7 +467,7 @@ function deliver(env: WorkerEnv, deliveryId: string, announcementId: string) {
     const response = yield* resend(
       env,
       {
-        from: env.EMAIL_FROM ?? "",
+        from: emailSender(env.EMAIL_FROM_NAME, env.EMAIL_FROM_EMAIL),
         html: renderedHtml,
         subject,
         text: renderedText,
@@ -498,7 +498,11 @@ function resend(
     catch: (cause) =>
       isApiError(cause) ? cause : apiError("Resend request failed", 503, true),
     try: async () => {
-      if (!env.RESEND_API_KEY || !env.EMAIL_FROM) {
+      if (
+        !env.RESEND_API_KEY ||
+        !env.EMAIL_FROM_NAME.trim() ||
+        !env.EMAIL_FROM_EMAIL.trim()
+      ) {
         throw apiError("Resend configuration is incomplete", 500, false);
       }
       const response = await fetch("https://api.resend.com/emails", {
@@ -656,6 +660,11 @@ function emailSubject(announcement: Announcement): string {
   return safeTitle
     ? `[Discord] Announcement — ${safeTitle}`.slice(0, 150)
     : "[Discord] New announcement";
+}
+
+function emailSender(name: string, address: string): string {
+  const safeName = name.trim().replaceAll(/[\r\n]+/gu, " ");
+  return `${safeName} <${address.trim()}>`;
 }
 
 function apiError(

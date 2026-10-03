@@ -22,7 +22,8 @@ Set these values in a local `.env` for Alchemy (never commit it) or configure th
 | `DISCORD_TARGET_CHANNEL_ID` | Yes | Destination Announcement Channel ID. |
 | `EMAIL_TO` | Yes | Recipient address for this subscription. |
 | `RESEND_API_KEY` | Yes | Resend API key; stored as a secret. |
-| `EMAIL_FROM` | Yes | Verified Resend sender, e.g. `Announcements <updates@example.com>`. |
+| `EMAIL_FROM_NAME` | Yes | Display name for the sender, e.g. `Announcements`. |
+| `EMAIL_FROM_EMAIL` | Yes | Verified Resend sender address, e.g. `updates@example.com`. |
 | `ADMIN_TOKEN` | Yes for admin routes | Random bearer token for `/admin/*`. |
 | `DELIVERY_DEAD_LETTER_QUEUE_NAME` | Yes for failure accounting | Queue name printed in Alchemy's stack outputs; set it in the Worker environment. |
 | `SOURCE_GUILD_ID` | No | Restrict matching to one source guild. |

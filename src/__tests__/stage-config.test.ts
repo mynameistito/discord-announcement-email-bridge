@@ -23,4 +23,11 @@ describe("worker stage configuration", () => {
       name: "discord-announcement-email-bridge-local",
     });
   });
+
+  it("rejects stage values that cannot form a workers.dev name", () => {
+    expect(() => workerStageConfig("dev_test")).toThrow(/single hyphens/u);
+    expect(() => workerStageConfig(`pr-${"1".repeat(40)}`)).toThrow(
+      /63 characters/u
+    );
+  });
 });

@@ -25,7 +25,6 @@ Set these values in a local `.env` for Alchemy (never commit it) or configure th
 | `EMAIL_FROM_NAME` | Yes | Display name for the sender, e.g. `Announcements`. |
 | `EMAIL_FROM_EMAIL` | Yes | Verified Resend sender address, e.g. `updates@example.com`. |
 | `ADMIN_TOKEN` | Yes for admin routes | Random bearer token for `/admin/*`. |
-| `DELIVERY_DEAD_LETTER_QUEUE_NAME` | Yes for failure accounting | Queue name printed in Alchemy's stack outputs; set it in the Worker environment. |
 | `SOURCE_GUILD_ID` | No | Restrict matching to one source guild. |
 | `SOURCE_CHANNEL_ID` | No | Restrict matching to one source channel. |
 | `STAGE` | No | Stage label returned by `/healthz`; set it to the deployment stage. |
@@ -48,14 +47,33 @@ bun run check
 
 ## Deploy and operate
 
-Use a dedicated Alchemy stage and profile for each environment. Review the plan before deploying:
+GitHub Actions deploys only after successful CI: `main` deploys the `prod` Alchemy stage, and same-repository pull requests get isolated `pr-<number>` previews. Closing a same-repository PR destroys only that preview stage. Fork PRs never receive deployment credentials. The deploy workflow loads values from the `discord-announcement-email-bridge` item in the `github-actions` 1Password vault.
+
+Before enabling deployment, configure these fields in that 1Password item:
+
+| Fields | Purpose |
+| --- | --- |
+| `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | Production account token and account ID. |
+| `PRODUCTION_URL` | Canonical HTTPS URL for the deployed Worker, used in deployment reports. |
+| `CLOUDFLARE_PREVIEW_API_TOKEN`, `CLOUDFLARE_PREVIEW_ACCOUNT_ID` | Token and account ID for a separate non-production Cloudflare account. |
+| `DISCORD_PREVIEW_BOT_TOKEN`, `DISCORD_PREVIEW_GUILD_ID`, `DISCORD_PREVIEW_TARGET_CHANNEL_ID` | Dedicated preview bot installed only in a test guild/channel. |
+| `RESEND_PREVIEW_API_KEY`, `EMAIL_PREVIEW_TO`, `EMAIL_PREVIEW_FROM_NAME`, `EMAIL_PREVIEW_FROM_EMAIL` | Preview-only Resend key, test recipient, and verified test sender. |
+| `ADMIN_PREVIEW_TOKEN` | Separate random bearer token for preview admin routes. |
+
+The existing production Discord/Resend fields shown in the item are used only for `main`. Do not reuse production bot, Resend, recipient, or Cloudflare credentials in previews. Keep preview Discord access limited to a test guild and make the preview recipient an address you control. Create the preview Cloudflare token in a separate non-production account so preview D1 databases, Queues, and Workers cannot touch production resources.
+
+Also add the repository Actions secret `OP_SERVICE_ACCOUNT_TOKEN`, containing the 1Password service-account token. Scope that service account to read only the `github-actions` vault. The workflow receives this bootstrap token from GitHub; all application and Cloudflare credentials are then resolved from the 1Password item. `GITHUB_TOKEN` is provided by GitHub and needs no separate secret.
+
+The Cloudflare API tokens need account-scoped write access for Workers Scripts, D1, and Queues; include Account Settings Read if the token UI/provider requires account metadata lookup. Do not grant Workers Routes access unless a custom route/domain is added. The preview token needs the same resource permissions but must be created in the separate preview account. Cloudflare's current permission names may appear as `Write` or legacy `Edit`; see [API token permissions](https://developers.cloudflare.com/fundamentals/api/reference/permissions/) and the [Workers permissions guide](https://developers.cloudflare.com/workers/authorization/workers/).
+
+For a manual local deployment, use a dedicated Alchemy stage and profile. Review the plan before deploying:
 
 ```sh
 bun node_modules/alchemy/bin/alchemy.js plan --stage <stage>
 bun node_modules/alchemy/bin/alchemy.js deploy --stage <stage>
 ```
 
-Never use a production profile or stage for preview builds. The one-minute Cron polls the destination channel; D1 migrations are applied by Alchemy. Configure the same values in the Worker environment, keeping tokens in secret storage. After the first deployment, copy `deadLetterQueueName` from the stack outputs into `DELIVERY_DEAD_LETTER_QUEUE_NAME` and redeploy so exhausted queue retries are recorded as terminal failures and become visible to `/admin/status` and `/admin/replay`.
+Never use a production profile or stage for preview builds. The one-minute Cron polls the configured destination; D1 migrations are applied by Alchemy. The dead-letter queue name is bound directly from the stage-specific Alchemy queue resource, so previews do not need a manually copied production queue name.
 
 - `GET /healthz` reports basic liveness and the stage/version.
 - `GET /admin/status` requires `Authorization: Bearer <ADMIN_TOKEN>` and reports cursor activity and delivery counts.

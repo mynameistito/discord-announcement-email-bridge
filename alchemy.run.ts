@@ -2,7 +2,7 @@ import { Stack } from "alchemy";
 import { D1, Queues, Worker, providers, state } from "alchemy/Cloudflare";
 import type { InferEnv } from "alchemy/Cloudflare";
 import { Redacted, String as StringConfig, withDefault } from "effect/Config";
-import { gen } from "effect/Effect";
+import { gen, map } from "effect/Effect";
 
 import { DeliveryQueue, DeliveryDeadLetterQueue } from "./src/resources";
 
@@ -20,9 +20,9 @@ export const BridgeWorker = Worker("DiscordAnnouncementEmailBridge", {
       withDefault("development")
     ),
     DB: Database,
-    DELIVERY_DEAD_LETTER_QUEUE_NAME: StringConfig(
-      "DELIVERY_DEAD_LETTER_QUEUE_NAME"
-    ).pipe(withDefault("")),
+    DELIVERY_DEAD_LETTER_QUEUE_NAME: DeliveryDeadLetterQueue.pipe(
+      map((queue) => queue.queueName)
+    ),
     DELIVERY_QUEUE: DeliveryQueue,
     DISCORD_BOT_TOKEN: Redacted("DISCORD_BOT_TOKEN").pipe(withDefault("")),
     DISCORD_GUILD_ID: StringConfig("DISCORD_GUILD_ID").pipe(withDefault("")),

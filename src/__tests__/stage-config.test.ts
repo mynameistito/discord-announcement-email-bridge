@@ -1,0 +1,19 @@
+import { describe, expect, it } from "vitest";
+
+import { workerStageConfig } from "../stage-config";
+
+describe("worker stage configuration", () => {
+  it("uses the production URL name and keeps its polling cron", () => {
+    expect(workerStageConfig("prod")).toStrictEqual({
+      crons: ["* * * * *"],
+      name: "discord-announcement-email-bridge-prod",
+    });
+  });
+
+  it("names PR workers by number and disables their cron", () => {
+    expect(workerStageConfig("pr-123")).toStrictEqual({
+      crons: [],
+      name: "discord-announcement-email-bridge-pr-123",
+    });
+  });
+});

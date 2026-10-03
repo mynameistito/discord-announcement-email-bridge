@@ -5,6 +5,11 @@ import { Redacted, String as StringConfig, withDefault } from "effect/Config";
 import { gen, map } from "effect/Effect";
 
 import { DeliveryQueue, DeliveryDeadLetterQueue } from "./src/resources";
+import { workerStageConfig } from "./src/stage-config";
+
+declare const process: { readonly env: { readonly STAGE?: string } };
+
+const workerConfig = workerStageConfig(process.env.STAGE ?? "local");
 
 const Database = D1.Database("BridgeDatabase", {
   migrations: "./migrations",
@@ -13,7 +18,7 @@ const Database = D1.Database("BridgeDatabase", {
 /** Cloudflare Worker entrypoint and infrastructure resources. */
 export const BridgeWorker = Worker("DiscordAnnouncementEmailBridge", {
   compatibility: { date: "2026-10-03", flags: ["nodejs_compat"] },
-  crons: ["* * * * *"],
+  crons: workerConfig.crons,
   env: {
     ADMIN_TOKEN: Redacted("ADMIN_TOKEN").pipe(withDefault("")),
     BUILD_VERSION: StringConfig("BUILD_VERSION").pipe(
@@ -38,6 +43,7 @@ export const BridgeWorker = Worker("DiscordAnnouncementEmailBridge", {
     STAGE: StringConfig("STAGE").pipe(withDefault("local")),
   },
   main: "./src/worker.ts",
+  name: workerConfig.name,
 });
 /** Runtime environment shape inferred from the configured Worker bindings. */
 export type WorkerEnv = InferEnv<typeof BridgeWorker>;

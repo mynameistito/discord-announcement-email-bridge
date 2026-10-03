@@ -52,7 +52,7 @@ jobs:
           EMAIL_FROM_EMAIL: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/EMAIL_FROM_EMAIL
           ADMIN_TOKEN: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/ADMIN_TOKEN
 
-      - name: Load isolated preview credentials from 1Password
+      - name: Load preview credentials from 1Password
         id: op_preview
         if: >-
           (github.event_name == 'workflow_run' &&
@@ -69,16 +69,16 @@ jobs:
           version: 2.34.1
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-          CLOUDFLARE_API_TOKEN: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/CLOUDFLARE_PREVIEW_API_TOKEN
-          CLOUDFLARE_ACCOUNT_ID: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/CLOUDFLARE_PREVIEW_ACCOUNT_ID
+          CLOUDFLARE_API_TOKEN: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/CLOUDFLARE_API_TOKEN
+          CLOUDFLARE_ACCOUNT_ID: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/CLOUDFLARE_ACCOUNT_ID
           PRODUCTION_URL: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/PRODUCTION_URL
           DISCORD_BOT_TOKEN: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/DISCORD_PREVIEW_BOT_TOKEN
-          DISCORD_GUILD_ID: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/DISCORD_PREVIEW_GUILD_ID
+          DISCORD_GUILD_ID: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/DISCORD_GUILD_ID
           DISCORD_TARGET_CHANNEL_ID: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/DISCORD_PREVIEW_TARGET_CHANNEL_ID
-          EMAIL_TO: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/EMAIL_PREVIEW_TO
-          RESEND_API_KEY: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/RESEND_PREVIEW_API_KEY
-          EMAIL_FROM_NAME: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/EMAIL_PREVIEW_FROM_NAME
-          EMAIL_FROM_EMAIL: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/EMAIL_PREVIEW_FROM_EMAIL
+          EMAIL_TO: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/EMAIL_TO
+          RESEND_API_KEY: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/RESEND_API_KEY
+          EMAIL_FROM_NAME: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/EMAIL_FROM_NAME
+          EMAIL_FROM_EMAIL: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/EMAIL_FROM_EMAIL
           ADMIN_TOKEN: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/ADMIN_PREVIEW_TOKEN
 
       - name: Deploy Alchemy stack
@@ -107,8 +107,14 @@ jobs:
           BUILD_VERSION: ${{ github.event.workflow_run.head_sha }}
           GITHUB_TOKEN: ${{ github.token }}
         with:
-          worker-name: discord-announcement-email-bridge
+          worker-name: >-
+            ${{ github.event_name == 'workflow_run' &&
+                github.event.workflow_run.event == 'push' &&
+                github.event.workflow_run.head_branch == 'main' &&
+                'discord-announcement-email-bridge-prod' ||
+                'discord-announcement-email-bridge' }}
           deploy-command: bunx --no-install alchemy deploy --stage "$STAGE" --yes
           destroy-command: bunx --no-install alchemy destroy --stage "$STAGE" --yes
           production-stage: prod
+          preview-url-pattern: https://{worker}-{stage}.mynameistito.workers.dev
           production-url: ${{ steps.op_production.outputs.PRODUCTION_URL || steps.op_preview.outputs.PRODUCTION_URL }}

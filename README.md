@@ -47,24 +47,22 @@ bun run check
 
 ## Deploy and operate
 
-GitHub Actions deploys only after successful CI: `main` deploys the `prod` Alchemy stage, and same-repository pull requests get isolated `pr-<number>` previews. Closing a same-repository PR destroys only that preview stage. Fork PRs never receive deployment credentials. The deploy workflow loads values from the `discord-announcement-email-bridge` item in the `github-actions` 1Password vault.
+GitHub Actions deploys only after successful CI: `main` deploys the `prod` Alchemy stage to `https://discord-announcement-email-bridge-prod.mynameistito.workers.dev`, and same-repository pull requests get isolated `pr-<number>` Workers at `https://discord-announcement-email-bridge-pr-<number>.mynameistito.workers.dev`. Preview Cron Triggers are disabled to prevent automatic polling and email delivery. Closing a same-repository PR destroys only that preview stage. Fork PRs never receive deployment credentials. The deploy workflow loads values from the `discord-announcement-email-bridge` item in the `github-actions` 1Password vault.
 
 Before enabling deployment, configure these fields in that 1Password item:
 
 | Fields | Purpose |
 | --- | --- |
-| `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | Production account token and account ID. |
-| `PRODUCTION_URL` | Canonical HTTPS URL for the deployed Worker, used in deployment reports. |
-| `CLOUDFLARE_PREVIEW_API_TOKEN`, `CLOUDFLARE_PREVIEW_ACCOUNT_ID` | Token and account ID for a separate non-production Cloudflare account. |
-| `DISCORD_PREVIEW_BOT_TOKEN`, `DISCORD_PREVIEW_GUILD_ID`, `DISCORD_PREVIEW_TARGET_CHANNEL_ID` | Dedicated preview bot installed only in a test guild/channel. |
-| `RESEND_PREVIEW_API_KEY`, `EMAIL_PREVIEW_TO`, `EMAIL_PREVIEW_FROM_NAME`, `EMAIL_PREVIEW_FROM_EMAIL` | Preview-only Resend key, test recipient, and verified test sender. |
+| `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | Shared Cloudflare account token and account ID for production and stage-isolated PR resources. |
+| `PRODUCTION_URL` | `https://discord-announcement-email-bridge-prod.mynameistito.workers.dev`, used in deployment reports. |
+| `DISCORD_PREVIEW_BOT_TOKEN`, `DISCORD_PREVIEW_TARGET_CHANNEL_ID` | Dedicated preview bot and test announcement channel; previews use the production `DISCORD_GUILD_ID`. |
 | `ADMIN_PREVIEW_TOKEN` | Separate random bearer token for preview admin routes. |
 
-The existing production Discord/Resend fields shown in the item are used only for `main`. Do not reuse production bot, Resend, recipient, or Cloudflare credentials in previews. Keep preview Discord access limited to a test guild and make the preview recipient an address you control. Create the preview Cloudflare token in a separate non-production account so preview D1 databases, Queues, and Workers cannot touch production resources.
+Production and PR Workers use the same Cloudflare account and API token; Alchemy isolates their Workers, D1 databases, and Queues by stage. Previews use the preview Discord bot and target channel, but the production guild ID and Resend key, recipient, and sender. PR previews are only deployed for same-repository PRs, and their Cron Triggers are disabled. PR-controlled Worker code can read and exfiltrate its bound production Resend key or send real mail; this is not a security boundary. Only trusted contributors should be allowed to create same-repository PRs. Use a test Resend key and recipient instead if PR authors are not fully trusted.
 
 Also add the repository Actions secret `OP_SERVICE_ACCOUNT_TOKEN`, containing the 1Password service-account token. Scope that service account to read only the `github-actions` vault. The workflow receives this bootstrap token from GitHub; all application and Cloudflare credentials are then resolved from the 1Password item. `GITHUB_TOKEN` is provided by GitHub and needs no separate secret.
 
-The Cloudflare API tokens need account-scoped write access for Workers Scripts, D1, and Queues; include Account Settings Read if the token UI/provider requires account metadata lookup. Do not grant Workers Routes access unless a custom route/domain is added. The preview token needs the same resource permissions but must be created in the separate preview account. Cloudflare's current permission names may appear as `Write` or legacy `Edit`; see [API token permissions](https://developers.cloudflare.com/fundamentals/api/reference/permissions/) and the [Workers permissions guide](https://developers.cloudflare.com/workers/authorization/workers/).
+The Cloudflare API token needs account-scoped write access for Workers Scripts, D1, and Queues; include Account Settings Read if the token UI/provider requires account metadata lookup. Do not grant Workers Routes access unless a custom route/domain is added. Cloudflare's current permission names may appear as `Write` or legacy `Edit`; see [API token permissions](https://developers.cloudflare.com/fundamentals/api/reference/permissions/) and the [Workers permissions guide](https://developers.cloudflare.com/workers/authorization/workers/).
 
 For a manual local deployment, use a dedicated Alchemy stage and profile. Review the plan before deploying:
 

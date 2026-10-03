@@ -23,3 +23,9 @@ jobs:
       - run: bun run typecheck
       - run: bun run test
       - run: bun run build
+      - uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.2
+        with:
+          name: worker-bundle
+          path: dist/worker.js
+          if-no-files-found: error
+          retention-days: 2

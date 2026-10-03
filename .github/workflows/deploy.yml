@@ -18,8 +18,12 @@ jobs:
     permissions:
       actions: read
       contents: read
-      deployments: write
-      pull-requests: write
+      pull-requests: read
+    env:
+      ALCHEMY_STAGE: ${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.event.workflow_run.event == 'pull_request' && format('pr-{0}', github.event.workflow_run.pull_requests[0].number) || 'prod' }}
+      BUILD_VERSION: ${{ github.event.workflow_run.head_sha || github.sha }}
+      PREBUILT_WORKER: ${{ github.event_name == 'workflow_run' && 'true' || 'false' }}
+      STAGE: ${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.event.workflow_run.event == 'pull_request' && format('pr-{0}', github.event.workflow_run.pull_requests[0].number) || 'prod' }}
     steps:
       - name: Check that the preview pull request is still open
         id: preview_pr
@@ -31,10 +35,35 @@ jobs:
           is_open="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.state == "open"')"
           printf 'open=%s\n' "$is_open" >> "$GITHUB_OUTPUT"
 
+      - name: Check out trusted deployment code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2
+
+      - run: bun install --frozen-lockfile
+
+      - name: Download the CI-built Worker bundle
+        if: github.event_name == 'workflow_run'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: worker-bundle
+          path: dist
+          repository: ${{ github.repository }}
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      - name: Verify the downloaded Worker bundle
+        if: github.event_name == 'workflow_run'
+        run: test -s dist/worker.js
+
       - name: Load production credentials from 1Password
         id: op_production
-        if: >-
-          github.event_name == 'workflow_run' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main'
+        if: github.event_name == 'workflow_run' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main'
         uses: 1password/load-secrets-action@70062d7a876d3eb6334754fa26efd2fbd90c32f2 # v5.0.1
         with:
           version: 2.34.1
@@ -42,7 +71,6 @@ jobs:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           CLOUDFLARE_API_TOKEN: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/CLOUDFLARE_API_TOKEN
           CLOUDFLARE_ACCOUNT_ID: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/CLOUDFLARE_ACCOUNT_ID
-          PRODUCTION_URL: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/PRODUCTION_URL
           DISCORD_BOT_TOKEN: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/DISCORD_BOT_TOKEN
           DISCORD_GUILD_ID: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/DISCORD_GUILD_ID
           DISCORD_TARGET_CHANNEL_ID: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/DISCORD_TARGET_CHANNEL_ID
@@ -55,15 +83,9 @@ jobs:
       - name: Load preview credentials from 1Password
         id: op_preview
         if: >-
-          (github.event_name == 'workflow_run' &&
-           github.event.workflow_run.event == 'pull_request' &&
-           github.event.workflow_run.head_repository.full_name == github.repository) ||
-           (github.event_name == 'pull_request' &&
-            github.event.action == 'closed' &&
-            github.event.pull_request.head.repo.full_name == github.repository)
-          && (github.event_name != 'workflow_run' ||
-              github.event.workflow_run.event != 'pull_request' ||
-              steps.preview_pr.outputs.open == 'true')
+          github.event_name == 'workflow_run' && github.event.workflow_run.event == 'pull_request' &&
+           github.event.workflow_run.head_repository.full_name == github.repository &&
+          steps.preview_pr.outputs.open == 'true'
         uses: 1password/load-secrets-action@70062d7a876d3eb6334754fa26efd2fbd90c32f2 # v5.0.1
         with:
           version: 2.34.1
@@ -71,7 +93,6 @@ jobs:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           CLOUDFLARE_API_TOKEN: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/CLOUDFLARE_API_TOKEN
           CLOUDFLARE_ACCOUNT_ID: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/CLOUDFLARE_ACCOUNT_ID
-          PRODUCTION_URL: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/PRODUCTION_URL
           DISCORD_BOT_TOKEN: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/DISCORD_PREVIEW_BOT_TOKEN
           DISCORD_GUILD_ID: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/DISCORD_GUILD_ID
           DISCORD_TARGET_CHANNEL_ID: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/DISCORD_PREVIEW_TARGET_CHANNEL_ID
@@ -81,40 +102,66 @@ jobs:
           EMAIL_FROM_EMAIL: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/EMAIL_FROM_EMAIL
           ADMIN_TOKEN: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/ADMIN_PREVIEW_TOKEN
 
-      - name: Deploy Alchemy stack
+      - name: Load preview cleanup credentials from 1Password
+        id: op_cleanup
+        if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+        uses: 1password/load-secrets-action@70062d7a876d3eb6334754fa26efd2fbd90c32f2 # v5.0.1
+        with:
+          version: 2.34.1
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          CLOUDFLARE_API_TOKEN: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/CLOUDFLARE_API_TOKEN
+          CLOUDFLARE_ACCOUNT_ID: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/CLOUDFLARE_ACCOUNT_ID
+
+      - name: Deploy production Worker
+        if: github.event_name == 'workflow_run' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ steps.op_production.outputs.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.op_production.outputs.CLOUDFLARE_ACCOUNT_ID }}
+          DISCORD_BOT_TOKEN: ${{ steps.op_production.outputs.DISCORD_BOT_TOKEN }}
+          DISCORD_GUILD_ID: ${{ steps.op_production.outputs.DISCORD_GUILD_ID }}
+          DISCORD_TARGET_CHANNEL_ID: ${{ steps.op_production.outputs.DISCORD_TARGET_CHANNEL_ID }}
+          EMAIL_TO: ${{ steps.op_production.outputs.EMAIL_TO }}
+          RESEND_API_KEY: ${{ steps.op_production.outputs.RESEND_API_KEY }}
+          EMAIL_FROM_NAME: ${{ steps.op_production.outputs.EMAIL_FROM_NAME }}
+          EMAIL_FROM_EMAIL: ${{ steps.op_production.outputs.EMAIL_FROM_EMAIL }}
+          ADMIN_TOKEN: ${{ steps.op_production.outputs.ADMIN_TOKEN }}
+        run: bunx --no-install alchemy deploy --stage "$ALCHEMY_STAGE" --yes
+
+      - name: Deploy PR preview Worker
+        if: github.event_name == 'workflow_run' && github.event.workflow_run.event == 'pull_request' && steps.preview_pr.outputs.open == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ steps.op_preview.outputs.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.op_preview.outputs.CLOUDFLARE_ACCOUNT_ID }}
+          DISCORD_BOT_TOKEN: ${{ steps.op_preview.outputs.DISCORD_BOT_TOKEN }}
+          DISCORD_GUILD_ID: ${{ steps.op_preview.outputs.DISCORD_GUILD_ID }}
+          DISCORD_TARGET_CHANNEL_ID: ${{ steps.op_preview.outputs.DISCORD_TARGET_CHANNEL_ID }}
+          EMAIL_TO: ${{ steps.op_preview.outputs.EMAIL_TO }}
+          RESEND_API_KEY: ${{ steps.op_preview.outputs.RESEND_API_KEY }}
+          EMAIL_FROM_NAME: ${{ steps.op_preview.outputs.EMAIL_FROM_NAME }}
+          EMAIL_FROM_EMAIL: ${{ steps.op_preview.outputs.EMAIL_FROM_EMAIL }}
+          ADMIN_TOKEN: ${{ steps.op_preview.outputs.ADMIN_TOKEN }}
+        run: bunx --no-install alchemy deploy --stage "$ALCHEMY_STAGE" --yes
+
+      - name: Destroy closed PR preview
+        if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ steps.op_cleanup.outputs.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.op_cleanup.outputs.CLOUDFLARE_ACCOUNT_ID }}
+        run: bunx --no-install alchemy destroy --stage "$ALCHEMY_STAGE" --yes
+
+      - name: Report deployment URL
         if: >-
           (github.event_name == 'workflow_run' &&
            github.event.workflow_run.event == 'push' &&
            github.event.workflow_run.head_branch == 'main') ||
           (github.event_name == 'workflow_run' &&
            github.event.workflow_run.event == 'pull_request' &&
-           steps.preview_pr.outputs.open == 'true') ||
-          (github.event_name == 'pull_request' &&
-           github.event.action == 'closed' &&
-           github.event.pull_request.head.repo.full_name == github.repository)
-        uses: mynameistito/alchemy-deploy@d42b56ce1471dde5c5654c722b79701a1c60e9eb # v2.2.0
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ steps.op_production.outputs.CLOUDFLARE_API_TOKEN || steps.op_preview.outputs.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ steps.op_production.outputs.CLOUDFLARE_ACCOUNT_ID || steps.op_preview.outputs.CLOUDFLARE_ACCOUNT_ID }}
-          DISCORD_BOT_TOKEN: ${{ steps.op_production.outputs.DISCORD_BOT_TOKEN || steps.op_preview.outputs.DISCORD_BOT_TOKEN }}
-          DISCORD_GUILD_ID: ${{ steps.op_production.outputs.DISCORD_GUILD_ID || steps.op_preview.outputs.DISCORD_GUILD_ID }}
-          DISCORD_TARGET_CHANNEL_ID: ${{ steps.op_production.outputs.DISCORD_TARGET_CHANNEL_ID || steps.op_preview.outputs.DISCORD_TARGET_CHANNEL_ID }}
-          EMAIL_TO: ${{ steps.op_production.outputs.EMAIL_TO || steps.op_preview.outputs.EMAIL_TO }}
-          RESEND_API_KEY: ${{ steps.op_production.outputs.RESEND_API_KEY || steps.op_preview.outputs.RESEND_API_KEY }}
-          EMAIL_FROM_NAME: ${{ steps.op_production.outputs.EMAIL_FROM_NAME || steps.op_preview.outputs.EMAIL_FROM_NAME }}
-          EMAIL_FROM_EMAIL: ${{ steps.op_production.outputs.EMAIL_FROM_EMAIL || steps.op_preview.outputs.EMAIL_FROM_EMAIL }}
-          ADMIN_TOKEN: ${{ steps.op_production.outputs.ADMIN_TOKEN || steps.op_preview.outputs.ADMIN_TOKEN }}
-          BUILD_VERSION: ${{ github.event.workflow_run.head_sha }}
-          GITHUB_TOKEN: ${{ github.token }}
-        with:
-          worker-name: >-
-            ${{ github.event_name == 'workflow_run' &&
-                github.event.workflow_run.event == 'push' &&
-                github.event.workflow_run.head_branch == 'main' &&
-                'discord-announcement-email-bridge-prod' ||
-                'discord-announcement-email-bridge' }}
-          deploy-command: bunx --no-install alchemy deploy --stage "$STAGE" --yes
-          destroy-command: bunx --no-install alchemy destroy --stage "$STAGE" --yes
-          production-stage: prod
-          preview-url-pattern: https://{worker}-{stage}.mynameistito.workers.dev
-          production-url: ${{ steps.op_production.outputs.PRODUCTION_URL || steps.op_preview.outputs.PRODUCTION_URL }}
+           steps.preview_pr.outputs.open == 'true')
+        run: |
+          if [ "$ALCHEMY_STAGE" = prod ]; then
+            url="https://discord-announcement-email-bridge-prod.mynameistito.workers.dev"
+          else
+            url="https://discord-announcement-email-bridge-${ALCHEMY_STAGE}.mynameistito.workers.dev"
+          fi
+          printf 'Deployed `%s` to %s\n' "$ALCHEMY_STAGE" "$url" >> "$GITHUB_STEP_SUMMARY"

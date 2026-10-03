@@ -7,9 +7,15 @@ import { gen, map } from "effect/Effect";
 import { DeliveryQueue, DeliveryDeadLetterQueue } from "./src/resources";
 import { workerStageConfig } from "./src/stage-config";
 
-declare const process: { readonly env: { readonly STAGE?: string } };
+declare const process: {
+  readonly env: {
+    readonly ALCHEMY_STAGE?: string;
+    readonly PREBUILT_WORKER?: string;
+  };
+};
 
-const workerConfig = workerStageConfig(process.env.STAGE ?? "local");
+const workerConfig = workerStageConfig(process.env.ALCHEMY_STAGE ?? "local");
+const usePrebuiltWorker = process.env.PREBUILT_WORKER === "true";
 
 const Database = D1.Database("BridgeDatabase", {
   migrations: "./migrations",
@@ -42,8 +48,9 @@ export const BridgeWorker = Worker("DiscordAnnouncementEmailBridge", {
     SOURCE_GUILD_ID: StringConfig("SOURCE_GUILD_ID").pipe(withDefault("")),
     STAGE: StringConfig("STAGE").pipe(withDefault("local")),
   },
-  main: "./src/worker.ts",
+  main: usePrebuiltWorker ? "./dist/worker.js" : "./src/worker.ts",
   name: workerConfig.name,
+  bundle: !usePrebuiltWorker,
 });
 /** Runtime environment shape inferred from the configured Worker bindings. */
 export type WorkerEnv = InferEnv<typeof BridgeWorker>;

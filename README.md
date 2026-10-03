@@ -69,8 +69,8 @@ The Cloudflare API tokens need account-scoped write access for Workers Scripts, 
 For a manual local deployment, use a dedicated Alchemy stage and profile. Review the plan before deploying:
 
 ```sh
-bun node_modules/alchemy/bin/alchemy.js plan --stage <stage>
-bun node_modules/alchemy/bin/alchemy.js deploy --stage <stage>
+bunx alchemy plan --stage <stage>
+bunx alchemy deploy --stage <stage>
 ```
 
 Never use a production profile or stage for preview builds. The one-minute Cron polls the configured destination; D1 migrations are applied by Alchemy. The dead-letter queue name is bound directly from the stage-specific Alchemy queue resource, so previews do not need a manually copied production queue name.

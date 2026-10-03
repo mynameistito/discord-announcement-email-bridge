@@ -11,7 +11,7 @@ Discord's documented follower webhook object has type `2` and contains `source_g
 
 ## Decision
 
-Use a once-per-minute Cloudflare Cron Trigger to poll each configured destination channel through Discord REST. Fetch at most 100 messages per request and continue `after` pagination until caught up. Sort by Snowflake ID oldest-first. Persist each observed message and its delivery in D1 before advancing a channel cursor. D1 uniqueness constraints protect overlapping/repeated polls. Enqueue stable delivery identifiers into a Cloudflare Queue; a separate queue handler renders and sends via Resend.
+Use a once-per-minute Cloudflare Cron Trigger to poll each configured destination channel through Discord REST. Fetch at most 100 messages per request: start with `after=<cursor>`, then page backward with `before=<oldest message ID>` until reaching the cursor or a short page. Discord returns newest-first; sort each fetched history oldest-first before classification. Persist verified announcements and their deliveries in D1 before advancing a channel cursor. D1 uniqueness constraints protect overlapping/repeated polls. Enqueue stable delivery identifiers into a Cloudflare Queue; a separate queue handler renders and sends via Resend.
 
 The classifier requires both `IS_CROSSPOST` and a complete source `message_reference`, then verifies the message's webhook ID against a cached/fetched webhook of type `2` whose source IDs agree. Crossposts that do not satisfy the full evidence are ignored. A malformed unrelated payload is isolated so it cannot block cursor progress. Failures fetching pages do block cursor advancement for that poll.
 

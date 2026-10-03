@@ -21,6 +21,16 @@ jobs:
       deployments: write
       pull-requests: write
     steps:
+      - name: Check that the preview pull request is still open
+        id: preview_pr
+        if: github.event_name == 'workflow_run' && github.event.workflow_run.event == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
+        run: |
+          is_open="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.state == "open"')"
+          printf 'open=%s\n' "$is_open" >> "$GITHUB_OUTPUT"
+
       - name: Load production credentials from 1Password
         id: op_production
         if: >-
@@ -48,9 +58,12 @@ jobs:
           (github.event_name == 'workflow_run' &&
            github.event.workflow_run.event == 'pull_request' &&
            github.event.workflow_run.head_repository.full_name == github.repository) ||
-          (github.event_name == 'pull_request' &&
-           github.event.action == 'closed' &&
-           github.event.pull_request.head.repo.full_name == github.repository)
+           (github.event_name == 'pull_request' &&
+            github.event.action == 'closed' &&
+            github.event.pull_request.head.repo.full_name == github.repository)
+          && (github.event_name != 'workflow_run' ||
+              github.event.workflow_run.event != 'pull_request' ||
+              steps.preview_pr.outputs.open == 'true')
         uses: 1password/load-secrets-action@70062d7a876d3eb6334754fa26efd2fbd90c32f2 # v5.0.1
         with:
           version: 2.34.1
@@ -69,6 +82,16 @@ jobs:
           ADMIN_TOKEN: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/ADMIN_PREVIEW_TOKEN
 
       - name: Deploy Alchemy stack
+        if: >-
+          (github.event_name == 'workflow_run' &&
+           github.event.workflow_run.event == 'push' &&
+           github.event.workflow_run.head_branch == 'main') ||
+          (github.event_name == 'workflow_run' &&
+           github.event.workflow_run.event == 'pull_request' &&
+           steps.preview_pr.outputs.open == 'true') ||
+          (github.event_name == 'pull_request' &&
+           github.event.action == 'closed' &&
+           github.event.pull_request.head.repo.full_name == github.repository)
         uses: mynameistito/alchemy-deploy@d42b56ce1471dde5c5654c722b79701a1c60e9eb # v2.2.0
         env:
           CLOUDFLARE_API_TOKEN: ${{ steps.op_production.outputs.CLOUDFLARE_API_TOKEN || steps.op_preview.outputs.CLOUDFLARE_API_TOKEN }}

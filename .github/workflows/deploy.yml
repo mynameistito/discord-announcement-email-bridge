@@ -32,8 +32,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
         run: |
-          is_open="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.state == "open"')"
+          pull_request="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
+          is_open="$(printf '%s' "$pull_request" | jq -r '.state == "open"')"
+          head_sha="$(printf '%s' "$pull_request" | jq -r '.head.sha')"
           printf 'open=%s\n' "$is_open" >> "$GITHUB_OUTPUT"
+          printf 'head_sha=%s\n' "$head_sha" >> "$GITHUB_OUTPUT"
 
       - name: Check out trusted deployment code
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -61,9 +64,34 @@ jobs:
         if: github.event_name == 'workflow_run'
         run: test -s dist/worker.js
 
+      - name: Check that the CI bundle is still current
+        id: current_run
+        if: github.event_name == 'workflow_run'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_EVENT: ${{ github.event.workflow_run.event }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+          PR_OPEN: ${{ steps.preview_pr.outputs.open }}
+          PR_HEAD_SHA: ${{ steps.preview_pr.outputs.head_sha }}
+        run: |
+          if [ "$RUN_EVENT" = push ]; then
+            current_sha="$(gh api "repos/${GITHUB_REPOSITORY}/branches/main" --jq '.commit.sha')"
+          elif [ "$RUN_EVENT" = pull_request ] && [ "$PR_OPEN" = true ]; then
+            current_sha="$PR_HEAD_SHA"
+          else
+            current_sha=""
+          fi
+
+          if [ -n "$current_sha" ] && [ "$RUN_SHA" = "$current_sha" ]; then
+            printf 'current=true\n' >> "$GITHUB_OUTPUT"
+          else
+            printf 'current=false\n' >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping stale CI bundle $RUN_SHA; current stage head is ${current_sha:-unavailable}."
+          fi
+
       - name: Load production credentials from 1Password
         id: op_production
-        if: github.event_name == 'workflow_run' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main'
+        if: github.event_name == 'workflow_run' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' && steps.current_run.outputs.current == 'true'
         uses: 1password/load-secrets-action@70062d7a876d3eb6334754fa26efd2fbd90c32f2 # v5.0.1
         with:
           version: 2.34.1
@@ -85,7 +113,7 @@ jobs:
         if: >-
           github.event_name == 'workflow_run' && github.event.workflow_run.event == 'pull_request' &&
            github.event.workflow_run.head_repository.full_name == github.repository &&
-          steps.preview_pr.outputs.open == 'true'
+          steps.preview_pr.outputs.open == 'true' && steps.current_run.outputs.current == 'true'
         uses: 1password/load-secrets-action@70062d7a876d3eb6334754fa26efd2fbd90c32f2 # v5.0.1
         with:
           version: 2.34.1
@@ -113,8 +141,33 @@ jobs:
           CLOUDFLARE_API_TOKEN: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/CLOUDFLARE_API_TOKEN
           CLOUDFLARE_ACCOUNT_ID: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/CLOUDFLARE_ACCOUNT_ID
 
+      - name: Recheck stage head immediately before deployment
+        id: deploy_current
+        if: github.event_name == 'workflow_run'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_EVENT: ${{ github.event.workflow_run.event }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+          PR_OPEN: ${{ steps.preview_pr.outputs.open }}
+          PR_HEAD_SHA: ${{ steps.preview_pr.outputs.head_sha }}
+        run: |
+          if [ "$RUN_EVENT" = push ]; then
+            current_sha="$(gh api "repos/${GITHUB_REPOSITORY}/branches/main" --jq '.commit.sha')"
+          elif [ "$RUN_EVENT" = pull_request ] && [ "$PR_OPEN" = true ]; then
+            current_sha="$PR_HEAD_SHA"
+          else
+            current_sha=""
+          fi
+
+          if [ -n "$current_sha" ] && [ "$RUN_SHA" = "$current_sha" ]; then
+            printf 'current=true\n' >> "$GITHUB_OUTPUT"
+          else
+            printf 'current=false\n' >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping stale CI bundle $RUN_SHA; current stage head is ${current_sha:-unavailable}."
+          fi
+
       - name: Deploy production Worker
-        if: github.event_name == 'workflow_run' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main'
+        if: github.event_name == 'workflow_run' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' && steps.deploy_current.outputs.current == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ steps.op_production.outputs.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ steps.op_production.outputs.CLOUDFLARE_ACCOUNT_ID }}
@@ -129,7 +182,7 @@ jobs:
         run: bunx --no-install alchemy deploy --stage "$ALCHEMY_STAGE" --yes
 
       - name: Deploy PR preview Worker
-        if: github.event_name == 'workflow_run' && github.event.workflow_run.event == 'pull_request' && steps.preview_pr.outputs.open == 'true'
+        if: github.event_name == 'workflow_run' && github.event.workflow_run.event == 'pull_request' && steps.preview_pr.outputs.open == 'true' && steps.deploy_current.outputs.current == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ steps.op_preview.outputs.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ steps.op_preview.outputs.CLOUDFLARE_ACCOUNT_ID }}
@@ -157,7 +210,8 @@ jobs:
            github.event.workflow_run.head_branch == 'main') ||
           (github.event_name == 'workflow_run' &&
            github.event.workflow_run.event == 'pull_request' &&
-           steps.preview_pr.outputs.open == 'true')
+           steps.preview_pr.outputs.open == 'true' &&
+           steps.deploy_current.outputs.current == 'true')
         run: |
           if [ "$ALCHEMY_STAGE" = prod ]; then
             url="https://discord-announcement-email-bridge-prod.mynameistito.workers.dev"

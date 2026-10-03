@@ -212,7 +212,10 @@ function fetchHistory(
         if (decoded.id && compareSnowflakes(decoded.id, highWater) > 0) {
           highWater = decoded.id;
         }
-        if (decoded._tag === "MalformedCrosspost") {
+        if (
+          decoded._tag === "MalformedCrosspost" &&
+          (!decoded.id || compareSnowflakes(decoded.id, cursor) > 0)
+        ) {
           return yield* Effect.fail(decoded.error);
         }
         if (decoded._tag === "Message") {

@@ -171,6 +171,19 @@ describe("announcement discovery integration", () => {
     expect(fake.cursor()).toBe("100");
   });
 
+  it("ignores malformed crossposts at or below the saved cursor", async () => {
+    const newestPage = Array.from({ length: 100 }, (_, index) =>
+      crosspost(String(200 - index))
+    );
+    const malformedOldMessage = { ...crosspost("99"), content: 1 };
+    const fake = fakePorts([newestPage, [malformedOldMessage]]);
+    await Effect.runPromise(
+      pollAll.pipe(Effect.provide(pollingServiceLayer(fake.ports)))
+    );
+    expect(fake.cursor()).toBe("200");
+    expect(fake.sent()).toHaveLength(100);
+  });
+
   it("continues polling other subscriptions after one subscription fails", async () => {
     const other: Subscription = {
       ...subscription,

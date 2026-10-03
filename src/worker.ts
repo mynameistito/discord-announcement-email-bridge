@@ -139,11 +139,14 @@ async function processDeliveryMessage(
     )
   );
   if (recorded._tag === "Failure") {
-    if (isRetryable(recorded.cause)) {
-      message.retry({ delaySeconds: 60 });
-      return;
-    }
-    throw Cause.squash(recorded.cause);
+    console.error(
+      JSON.stringify({
+        event: "delivery.record_failed",
+        deliveryId: payload.value.deliveryId,
+      })
+    );
+    message.retry({ delaySeconds: 60 });
+    return;
   }
   if (retryable) {
     console.warn(

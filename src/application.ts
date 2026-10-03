@@ -52,19 +52,6 @@ export class BridgeInfrastructureError extends Error {
   }
 }
 
-/** A follower crosspost has no readable content-bearing fields. */
-export class AnnouncementContentUnavailableError extends Error {
-  readonly _tag = "AnnouncementContentUnavailable";
-  override readonly name = "AnnouncementContentUnavailableError";
-  readonly messageId: string;
-  constructor(messageId: string) {
-    super(
-      "Discord withheld announcement content; enable MESSAGE_CONTENT and retry"
-    );
-    this.messageId = messageId;
-  }
-}
-
 /** Identifier for one durable queue delivery. */
 export interface DeliveryRef {
   readonly deliveryId: string;
@@ -308,39 +295,45 @@ function classifyMessages(
     const announcements: Announcement[] = [];
     const webhooks = new Map<string, FollowerWebhook | undefined>();
     for (const message of messages) {
-      if (!message.webhook_id || ((message.flags ?? 0) & 2) === 0) {
-        continue;
-      }
-      let webhook = webhooks.get(message.webhook_id);
-      if (!webhooks.has(message.webhook_id)) {
-        webhook = yield* ports.source.getWebhook(message.webhook_id).pipe(
-          Effect.catchIf(
-            (error) => error.status === 404,
-            () => Effect.succeed<undefined>(undefined)
-          )
+      if (message.webhook_id && ((message.flags ?? 0) & 2) !== 0) {
+        let webhook = webhooks.get(message.webhook_id);
+        if (!webhooks.has(message.webhook_id)) {
+          webhook = yield* ports.source.getWebhook(message.webhook_id).pipe(
+            Effect.catchIf(
+              (error) => error.status === 404,
+              () => Effect.succeed<undefined>(undefined)
+            )
+          );
+          webhooks.set(message.webhook_id, webhook);
+        }
+        const announcement = classifyFollowerMessage(
+          message,
+          webhook,
+          subscription
         );
-        webhooks.set(message.webhook_id, webhook);
-      }
-      const announcement = classifyFollowerMessage(
-        message,
-        webhook,
-        subscription
-      );
-      if (announcement) {
-        if (
-          !message.content &&
-          message.embeds.length === 0 &&
-          message.attachments.length === 0
-        ) {
-          return yield* Effect.fail(
-            new AnnouncementContentUnavailableError(message.id)
+        if (announcement && hasReadableContent(message)) {
+          announcements.push(announcement);
+        } else if (announcement) {
+          console.warn(
+            JSON.stringify({
+              event: "announcement.content_unavailable",
+              messageId: message.id,
+              subscriptionId: subscription.id,
+            })
           );
         }
-        announcements.push(announcement);
       }
     }
     return announcements;
   });
+}
+
+function hasReadableContent(message: DiscordMessage): boolean {
+  return (
+    Boolean(message.content) ||
+    message.embeds.length > 0 ||
+    message.attachments.length > 0
+  );
 }
 
 function persistAndEnqueue(

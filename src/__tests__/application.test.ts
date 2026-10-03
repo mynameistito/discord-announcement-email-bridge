@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   BridgeInfrastructureError,
@@ -169,6 +169,33 @@ describe("announcement discovery integration", () => {
       )
     ).rejects.toThrow("malformed crosspost candidate");
     expect(fake.cursor()).toBe("100");
+  });
+
+  it("logs and skips contentless crossposts while delivering later messages", async () => {
+    const contentless = {
+      ...crosspost("101"),
+      attachments: [],
+      content: "",
+      embeds: [],
+    };
+    const fake = fakePorts([[contentless, crosspost("102")]]);
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await Effect.runPromise(
+        pollAll.pipe(Effect.provide(pollingServiceLayer(fake.ports)))
+      );
+      expect(fake.cursor()).toBe("102");
+      expect(fake.sent()).toStrictEqual(["delivery-102"]);
+      expect(warning).toHaveBeenCalledWith(
+        JSON.stringify({
+          event: "announcement.content_unavailable",
+          messageId: "101",
+          subscriptionId: subscription.id,
+        })
+      );
+    } finally {
+      warning.mockRestore();
+    }
   });
 
   it("ignores malformed crossposts at or below the saved cursor", async () => {

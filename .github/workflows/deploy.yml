@@ -125,7 +125,7 @@ jobs:
           DISCORD_GUILD_ID: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/DISCORD_GUILD_ID
           DISCORD_TARGET_CHANNEL_ID: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/DISCORD_PREVIEW_TARGET_CHANNEL_ID
           EMAIL_TO: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/EMAIL_TO
-          RESEND_API_KEY: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/RESEND_API_KEY
+          RESEND_API_KEY: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/RESEND_PREVIEW_API_KEY
           EMAIL_FROM_NAME: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/EMAIL_FROM_NAME
           EMAIL_FROM_EMAIL: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/EMAIL_FROM_EMAIL
           ADMIN_TOKEN: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/ADMIN_PREVIEW_TOKEN

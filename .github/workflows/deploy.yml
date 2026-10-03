@@ -207,7 +207,8 @@ jobs:
         if: >-
           (github.event_name == 'workflow_run' &&
            github.event.workflow_run.event == 'push' &&
-           github.event.workflow_run.head_branch == 'main') ||
+           github.event.workflow_run.head_branch == 'main' &&
+           steps.deploy_current.outputs.current == 'true') ||
           (github.event_name == 'workflow_run' &&
            github.event.workflow_run.event == 'pull_request' &&
            steps.preview_pr.outputs.open == 'true' &&

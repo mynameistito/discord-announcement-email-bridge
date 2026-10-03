@@ -67,6 +67,7 @@ For a manual local deployment, use a dedicated Alchemy stage and profile. Set `A
 
 ```powershell
 $env:ALCHEMY_STAGE = "dev-myname"
+$env:STAGE = $env:ALCHEMY_STAGE
 bunx alchemy plan --stage $env:ALCHEMY_STAGE
 bunx alchemy deploy --stage $env:ALCHEMY_STAGE
 ```

@@ -30,7 +30,9 @@ const ApiErrorSchema = Schema.Struct({
 
 type ApiError = typeof ApiErrorSchema.Type;
 
-const ResendResponseSchema = Schema.Struct({ id: Schema.String });
+const ResendResponseSchema = Schema.Struct({
+  id: Schema.String.check(Schema.isPattern(/\S/u)),
+});
 const StoredMessageSchema = Schema.fromJsonString(MessageSchema);
 
 interface ResendEmailPayload {
@@ -59,71 +61,11 @@ const worker = {
 
   async queue(batch: MessageBatch<unknown>, env: WorkerEnv): Promise<void> {
     if (batch.queue === env.DELIVERY_DEAD_LETTER_QUEUE_NAME) {
-      for (const message of batch.messages) {
-        const payload = Schema.decodeUnknownOption(QueuePayloadSchema)(
-          message.body
-        );
-        if (payload._tag === "None") {
-          console.error(JSON.stringify({ event: "queue.invalid_dead_letter" }));
-          continue;
-        }
-        await Effect.runPromise(
-          markDeadLetterFailure(env.DB, payload.value.deliveryId)
-        );
-        console.error(
-          JSON.stringify({
-            deliveryId: payload.value.deliveryId,
-            event: "delivery.dead_lettered",
-          })
-        );
-      }
+      await processDeadLetters(batch.messages, env);
       return;
     }
     for (const message of batch.messages) {
-      const payloadOption = Schema.decodeUnknownOption(QueuePayloadSchema)(
-        message.body
-      );
-      if (payloadOption._tag === "None") {
-        console.error(JSON.stringify({ event: "queue.invalid_message" }));
-        continue;
-      }
-      const payload = payloadOption.value;
-      const result = await Effect.runPromiseExit(
-        deliver(env, payload.deliveryId, payload.announcementId)
-      );
-      if (result._tag === "Failure") {
-        const errorMessage = safeError(result.cause);
-        const retryable = isRetryable(result.cause);
-        const recorded = await Effect.runPromiseExit(
-          recordDeliveryFailure(
-            env.DB,
-            payload.deliveryId,
-            errorMessage,
-            retryable
-          )
-        );
-        if (recorded._tag === "Failure") {
-          throw Cause.squash(recorded.cause);
-        }
-        if (retryable) {
-          console.warn(
-            JSON.stringify({
-              event: "delivery.retry",
-              deliveryId: payload.deliveryId,
-              attempt: message.attempts,
-              error: errorMessage,
-            })
-          );
-          throw Cause.squash(result.cause);
-        }
-        console.error(
-          JSON.stringify({
-            event: "delivery.failed",
-            deliveryId: payload.deliveryId,
-            error: errorMessage,
-          })
-        );
-      }
+      await processDeliveryMessage(message, env);
     }
   },
 
@@ -141,6 +83,88 @@ const worker = {
 };
 
 export default worker;
+
+async function processDeadLetters(
+  messages: MessageBatch<unknown>["messages"],
+  env: WorkerEnv
+): Promise<void> {
+  for (const message of messages) {
+    await processDeadLetterMessage(message, env);
+  }
+}
+
+async function processDeadLetterMessage(
+  message: MessageBatch<unknown>["messages"][number],
+  env: WorkerEnv
+): Promise<void> {
+  const payload = Schema.decodeUnknownOption(QueuePayloadSchema)(message.body);
+  if (payload._tag === "None") {
+    console.error(JSON.stringify({ event: "queue.invalid_dead_letter" }));
+    return;
+  }
+  await Effect.runPromise(
+    markDeadLetterFailure(env.DB, payload.value.deliveryId)
+  );
+  console.error(
+    JSON.stringify({
+      deliveryId: payload.value.deliveryId,
+      event: "delivery.dead_lettered",
+    })
+  );
+}
+
+async function processDeliveryMessage(
+  message: MessageBatch<unknown>["messages"][number],
+  env: WorkerEnv
+): Promise<void> {
+  const payload = Schema.decodeUnknownOption(QueuePayloadSchema)(message.body);
+  if (payload._tag === "None") {
+    console.error(JSON.stringify({ event: "queue.invalid_message" }));
+    return;
+  }
+  const result = await Effect.runPromiseExit(
+    deliver(env, payload.value.deliveryId, payload.value.announcementId)
+  );
+  if (result._tag === "Success") {
+    return;
+  }
+  const errorMessage = safeError(result.cause);
+  const retryable = isRetryable(result.cause);
+  const recorded = await Effect.runPromiseExit(
+    recordDeliveryFailure(
+      env.DB,
+      payload.value.deliveryId,
+      errorMessage,
+      retryable
+    )
+  );
+  if (recorded._tag === "Failure") {
+    if (isRetryable(recorded.cause)) {
+      message.retry({ delaySeconds: 60 });
+      return;
+    }
+    throw Cause.squash(recorded.cause);
+  }
+  if (retryable) {
+    console.warn(
+      JSON.stringify({
+        event: "delivery.retry",
+        deliveryId: payload.value.deliveryId,
+        attempt: message.attempts,
+        error: errorMessage,
+      })
+    );
+    message.retry({ delaySeconds: 60 });
+    return;
+  }
+  console.error(
+    JSON.stringify({
+      event: "delivery.failed",
+      deliveryId: payload.value.deliveryId,
+      error: errorMessage,
+    })
+  );
+}
 
 function healthResponse(env: WorkerEnv): Response {
   return Response.json({
@@ -254,9 +278,7 @@ function createPollingPorts(env: WorkerEnv): PollingPorts {
           )
             .bind(subscriptionId)
             .first<CursorRow>()
-        ).pipe(
-          Effect.map((row) => (row ? (row.last_message_id ?? "0") : undefined))
-        ),
+        ).pipe(Effect.map((row) => row?.last_message_id ?? undefined)),
       enabledSubscriptions: () =>
         d1(() =>
           env.DB.prepare(
@@ -266,7 +288,7 @@ function createPollingPorts(env: WorkerEnv): PollingPorts {
       initializeCursor: (subscriptionId, messageId) =>
         d1(() =>
           env.DB.prepare(
-            "INSERT INTO channel_cursors (subscription_id, last_message_id) VALUES (?, ?) ON CONFLICT(subscription_id) DO NOTHING"
+            "INSERT INTO channel_cursors (subscription_id, last_message_id) VALUES (?, ?) ON CONFLICT(subscription_id) DO UPDATE SET last_message_id = excluded.last_message_id, updated_at = CURRENT_TIMESTAMP WHERE channel_cursors.last_message_id IS NULL"
           )
             .bind(subscriptionId, messageId ?? null)
             .run()
@@ -359,6 +381,8 @@ function discordGet<T>(
       const response = await fetch(`https://discord.com/api/v10${path}`, {
         headers: {
           Authorization: `Bot ${Redacted.value(Redacted.make(env.DISCORD_BOT_TOKEN))}`,
+          "User-Agent":
+            "DiscordBot (https://github.com/mynameistito/discord-announcement-email-bridge, 0.1.0)",
         },
       });
       if (!response.ok) {
@@ -533,7 +557,6 @@ function resend(
         },
         body: JSON.stringify(payload),
       });
-      const body: unknown = await response.json();
       if (!response.ok) {
         const retryable =
           response.status === 409 ||
@@ -548,6 +571,7 @@ function resend(
         );
         throw error;
       }
+      const body: unknown = await response.json();
       const parsed = Schema.decodeUnknownOption(ResendResponseSchema)(body);
       if (parsed._tag === "None") {
         throw apiError("Resend response was missing an email ID", 502, true);
@@ -562,6 +586,11 @@ function ensureSubscription(db: D1Database, subscription: Subscription) {
     db.batch([
       db
         .prepare(
+          "UPDATE subscriptions SET enabled = 0, updated_at = CURRENT_TIMESTAMP WHERE id != ? AND enabled = 1"
+        )
+        .bind(subscription.id),
+      db
+        .prepare(
           "INSERT INTO subscriptions (id, destination_guild_id, destination_channel_id, source_guild_id, source_channel_id, email_to, enabled) VALUES (?, ?, ?, ?, ?, ?, 1) ON CONFLICT(id) DO UPDATE SET destination_guild_id = excluded.destination_guild_id, destination_channel_id = excluded.destination_channel_id, source_guild_id = excluded.source_guild_id, source_channel_id = excluded.source_channel_id, email_to = excluded.email_to, enabled = 1, updated_at = CURRENT_TIMESTAMP"
         )
         .bind(
@@ -572,11 +601,6 @@ function ensureSubscription(db: D1Database, subscription: Subscription) {
           subscription.sourceChannelId ?? null,
           subscription.emailTo
         ),
-      db
-        .prepare(
-          "INSERT INTO channel_cursors (subscription_id, last_message_id) VALUES (?, NULL) ON CONFLICT(subscription_id) DO NOTHING"
-        )
-        .bind(subscription.id),
     ])
   ).pipe(Effect.asVoid);
 }
@@ -628,7 +652,7 @@ function d1<A>(
   operation: () => Promise<A>
 ): Effect.Effect<A, BridgeInfrastructureError> {
   return Effect.tryPromise({
-    catch: (cause) => infrastructureError("d1", cause),
+    catch: (cause) => infrastructureError("d1", cause, true),
     try: operation,
   });
 }
@@ -672,8 +696,9 @@ function emailSubject(announcement: Announcement): string {
 }
 
 function emailSender(name: string, address: string): string {
-  const safeName = name.trim().replaceAll(/[\r\n]+/gu, " ");
-  return `${safeName} <${address.trim()}>`;
+  const safeName = name.trim().replaceAll(/[\r\n<>]+/gu, " ");
+  const safeAddress = address.trim().replaceAll(/[\r\n<>]/gu, "");
+  return `${safeName} <${safeAddress}>`;
 }
 
 function apiError(
@@ -694,9 +719,10 @@ function discordError(
 
 function infrastructureError(
   operation: string,
-  cause: unknown
+  cause: unknown,
+  retryable = false
 ): BridgeInfrastructureError {
-  return new BridgeInfrastructureError(operation, cause);
+  return new BridgeInfrastructureError(operation, cause, retryable);
 }
 
 function isApiError(error: unknown): error is ApiError {
@@ -715,11 +741,27 @@ function isRetryable(cause: Cause.Cause<unknown>): boolean {
   if (failure.value instanceof DiscordApiError) {
     return failure.value.retryable;
   }
+  if (failure.value instanceof BridgeInfrastructureError) {
+    return failure.value.retryable;
+  }
   const parsed = Schema.decodeUnknownOption(ApiErrorSchema)(failure.value);
   return parsed._tag === "Some" && parsed.value.retryable;
 }
 
 function safeError(cause: Cause.Cause<unknown>): string {
+  const failure = Cause.findErrorOption(cause);
+  if (failure._tag === "Some") {
+    if (
+      failure.value instanceof DiscordApiError ||
+      failure.value instanceof BridgeInfrastructureError
+    ) {
+      return failure.value.message.slice(0, 300);
+    }
+    const parsed = Schema.decodeUnknownOption(ApiErrorSchema)(failure.value);
+    if (parsed._tag === "Some") {
+      return parsed.value.message.slice(0, 300);
+    }
+  }
   return Cause.pretty(cause).slice(0, 300);
 }
 

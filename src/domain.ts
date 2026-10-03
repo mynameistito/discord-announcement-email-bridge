@@ -36,7 +36,7 @@ export const MessageSchema = Schema.Struct({
   edited_timestamp: Schema.optionalKey(Schema.NullOr(Schema.String)),
   embeds: Schema.Array(EmbedSchema),
   flags: Schema.optionalKey(Schema.Number),
-  id: Schema.String,
+  id: Schema.String.check(Schema.isPattern(/^\d+$/u)),
   message_reference: Schema.optionalKey(RefSchema),
   timestamp: Schema.String,
   type: Schema.Number,

@@ -14,6 +14,10 @@ import type {
 } from "./domain";
 
 const MessageIdSchema = Schema.Struct({ id: Schema.String });
+const PotentialCrosspostSchema = Schema.Struct({
+  flags: Schema.Number,
+  webhook_id: Schema.String,
+});
 
 /** A Discord message payload held at the REST-to-domain decoding boundary. */
 export interface UnparsedDiscordMessage {
@@ -38,11 +42,13 @@ export class BridgeInfrastructureError extends Error {
   readonly _tag = "BridgeInfrastructureError" as const;
   override readonly name = "BridgeInfrastructureError";
   readonly operation: string;
+  readonly retryable: boolean;
   override readonly cause: unknown;
-  constructor(operation: string, cause: unknown) {
+  constructor(operation: string, cause: unknown, retryable = false) {
     super(`Bridge infrastructure operation failed: ${operation}`);
     this.operation = operation;
     this.cause = cause;
+    this.retryable = retryable;
   }
 }
 
@@ -127,8 +133,22 @@ export const pollingServiceLayer = (
 export const pollAll = Effect.gen(function* pollAll() {
   const ports = yield* PollingService;
   const subscriptions = yield* ports.repository.enabledSubscriptions();
+  const failures: string[] = [];
   for (const subscription of subscriptions) {
-    yield* pollSubscription(ports, subscription);
+    const failure = yield* pollSubscription(ports, subscription).pipe(
+      Effect.match({
+        onFailure: (error) => `${subscription.id}: ${error.message}`,
+        onSuccess: () => undefined,
+      })
+    );
+    if (failure) {
+      failures.push(failure);
+    }
+  }
+  if (failures.length > 0) {
+    return yield* Effect.fail(
+      new Error(`Polling failed: ${failures.join("; ")}`)
+    );
   }
 });
 
@@ -167,7 +187,7 @@ function initializeCursor(ports: PollingPorts, subscription: Subscription) {
     });
     yield* ports.repository.initializeCursor(
       subscription.id,
-      ids.toSorted(compareSnowflakes).at(-1)
+      ids.toSorted(compareSnowflakes).at(-1) ?? "0"
     );
   });
 }
@@ -188,21 +208,15 @@ function fetchHistory(
     for (;;) {
       const pageMessages: DiscordMessage[] = [];
       for (const payload of page) {
-        const parsedId = Schema.decodeUnknownOption(MessageIdSchema)(
-          payload.raw
-        );
-        const rawId =
-          parsedId._tag === "Some" && /^\d+$/u.test(parsedId.value.id)
-            ? parsedId.value.id
-            : undefined;
-        if (rawId && compareSnowflakes(rawId, highWater) > 0) {
-          highWater = rawId;
+        const decoded = decodePolledMessage(payload);
+        if (decoded.id && compareSnowflakes(decoded.id, highWater) > 0) {
+          highWater = decoded.id;
         }
-        const decoded = yield* Schema.decodeUnknownEffect(MessageSchema)(
-          payload.raw
-        ).pipe(Effect.option);
-        if (decoded._tag === "Some") {
-          pageMessages.push(decoded.value);
+        if (decoded._tag === "MalformedCrosspost") {
+          return yield* Effect.fail(decoded.error);
+        }
+        if (decoded._tag === "Message") {
+          pageMessages.push(decoded.message);
         }
       }
       messages.push(
@@ -235,6 +249,51 @@ function fetchHistory(
     }
     return { highWater, messages: oldestFirst(messages) };
   });
+}
+
+type DecodedPolledMessage =
+  | {
+      readonly _tag: "Message";
+      readonly id: string;
+      readonly message: DiscordMessage;
+    }
+  | {
+      readonly _tag: "MalformedCrosspost";
+      readonly id?: string;
+      readonly error: DiscordApiError;
+    }
+  | { readonly _tag: "Skip"; readonly id?: string };
+
+function decodePolledMessage(
+  payload: UnparsedDiscordMessage
+): DecodedPolledMessage {
+  const parsedId = Schema.decodeUnknownOption(MessageIdSchema)(payload.raw);
+  const id =
+    parsedId._tag === "Some" && /^\d+$/u.test(parsedId.value.id)
+      ? parsedId.value.id
+      : undefined;
+  const message = Schema.decodeUnknownOption(MessageSchema)(payload.raw);
+  if (message._tag === "Some") {
+    return { _tag: "Message", id: message.value.id, message: message.value };
+  }
+  const possibleCrosspost = Schema.decodeUnknownOption(
+    PotentialCrosspostSchema
+  )(payload.raw);
+  if (
+    possibleCrosspost._tag === "Some" &&
+    (possibleCrosspost.value.flags & 2) !== 0
+  ) {
+    return {
+      _tag: "MalformedCrosspost",
+      ...(id ? { id } : undefined),
+      error: new DiscordApiError(
+        "Discord returned a malformed crosspost candidate",
+        502,
+        false
+      ),
+    };
+  }
+  return { _tag: "Skip", ...(id ? { id } : undefined) };
 }
 
 function classifyMessages(

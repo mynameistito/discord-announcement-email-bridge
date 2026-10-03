@@ -71,6 +71,11 @@ describe("Discord payloads and follower classification", () => {
     await expect(
       Effect.runPromise(Schema.decodeUnknownEffect(MessageSchema)({ id: 1 }))
     ).rejects.toBeInstanceOf(Schema.SchemaError);
+    await expect(
+      Effect.runPromise(
+        Schema.decodeUnknownEffect(MessageSchema)(message("not-a-snowflake"))
+      )
+    ).rejects.toBeInstanceOf(Schema.SchemaError);
   });
 
   it("accepts only crossposts from a matching type-2 follower webhook", () => {
@@ -86,7 +91,7 @@ describe("Discord payloads and follower classification", () => {
     expect(
       classifyFollowerMessage(
         message("101", { flags: 0 }),
-        undefined,
+        webhook,
         subscription
       )
     ).toBeUndefined();
@@ -95,7 +100,7 @@ describe("Discord payloads and follower classification", () => {
   it("rejects ordinary incoming webhook messages", () => {
     expect(
       classifyFollowerMessage(
-        message("102", { flags: 0 }),
+        message("102"),
         { ...webhook, type: 1 },
         subscription
       )

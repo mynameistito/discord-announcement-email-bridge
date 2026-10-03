@@ -1,7 +1,12 @@
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { DiscordApiError, pollAll, pollingServiceLayer } from "../application";
+import {
+  BridgeInfrastructureError,
+  DiscordApiError,
+  pollAll,
+  pollingServiceLayer,
+} from "../application";
 import type { PollingPorts } from "../application";
 import type { Subscription } from "../domain";
 
@@ -36,22 +41,34 @@ interface FakePollingPorts {
   readonly ports: PollingPorts;
   readonly cursor: () => string | undefined;
   readonly sent: () => readonly string[];
+  readonly beforeValues: () => readonly string[];
 }
 
 function fakePorts(
   pages: readonly (readonly unknown[])[],
-  initialCursor: string | null = "100"
+  initialCursor: string | null = "100",
+  failEnqueueCount = 0
 ): FakePollingPorts {
   let cursorValue: string | undefined = initialCursor ?? undefined;
   let initialized = initialCursor !== null;
   const discovered = new Map<string, string>();
   const queued: string[] = [];
   const marked = new Set<string>();
+  const beforeValues: string[] = [];
   let beforeIndex = 0;
+  let enqueueAttempts = 0;
   const ports: PollingPorts = {
     enqueue: (delivery) =>
-      Effect.sync(() => {
-        queued.push(delivery.deliveryId);
+      Effect.suspend(() => {
+        enqueueAttempts += 1;
+        if (enqueueAttempts <= failEnqueueCount) {
+          return Effect.fail(
+            new BridgeInfrastructureError("queue_send", "test failure", true)
+          );
+        }
+        return Effect.sync(() => {
+          queued.push(delivery.deliveryId);
+        });
       }),
     repository: {
       cursor: () =>
@@ -86,8 +103,9 @@ function fakePorts(
     source: {
       fetchAfter: () =>
         Effect.succeed((pages[0] ?? []).map((raw) => ({ raw }))),
-      fetchBefore: () => {
+      fetchBefore: (_channelId, before) => {
         beforeIndex += 1;
+        beforeValues.push(before);
         return Effect.succeed(
           (pages[beforeIndex] ?? []).map((raw) => ({ raw }))
         );
@@ -106,6 +124,7 @@ function fakePorts(
     cursor: () => (initialized ? (cursorValue ?? "0") : undefined),
     ports,
     sent: () => queued,
+    beforeValues: () => beforeValues,
   };
 }
 
@@ -114,26 +133,82 @@ describe("announcement discovery integration", () => {
     const newestPage = Array.from({ length: 100 }, (_, index) =>
       crosspost(String(200 - index))
     );
-    const olderPage = [crosspost("101")];
-    const fake = fakePorts([newestPage, olderPage]);
+    const olderPage = Array.from({ length: 100 }, (_, index) =>
+      crosspost(String(100 - index))
+    );
+    const fake = fakePorts([newestPage, olderPage], "0");
     await Effect.runPromise(
       pollAll.pipe(Effect.provide(pollingServiceLayer(fake.ports)))
     );
     expect(fake.cursor()).toBe("200");
-    expect(fake.sent()).toHaveLength(100);
-    expect(fake.sent()[0]).toBe("delivery-101");
+    expect(fake.sent()).toHaveLength(200);
+    expect(fake.beforeValues()).toStrictEqual(["101", "1"]);
+    expect(fake.sent()[0]).toBe("delivery-1");
     expect(fake.sent().at(-1)).toBe("delivery-200");
   });
 
-  it("keeps repeats safe: the persistent uniqueness seam yields one logical delivery", async () => {
-    const fake = fakePorts([[crosspost("101")]]);
-    await Effect.runPromise(
-      pollAll.pipe(Effect.provide(pollingServiceLayer(fake.ports)))
-    );
+  it("re-enqueues a persisted pending delivery after enqueue fails", async () => {
+    const fake = fakePorts([[crosspost("101")]], "100", 1);
+    await expect(
+      Effect.runPromise(
+        pollAll.pipe(Effect.provide(pollingServiceLayer(fake.ports)))
+      )
+    ).rejects.toThrow("queue_send");
     await Effect.runPromise(
       pollAll.pipe(Effect.provide(pollingServiceLayer(fake.ports)))
     );
     expect(fake.sent()).toStrictEqual(["delivery-101"]);
+  });
+
+  it("does not advance past a malformed possible crosspost", async () => {
+    const malformed = { ...crosspost("101"), content: 1 };
+    const fake = fakePorts([[malformed]]);
+    await expect(
+      Effect.runPromise(
+        pollAll.pipe(Effect.provide(pollingServiceLayer(fake.ports)))
+      )
+    ).rejects.toThrow("malformed crosspost candidate");
+    expect(fake.cursor()).toBe("100");
+  });
+
+  it("continues polling other subscriptions after one subscription fails", async () => {
+    const other: Subscription = {
+      ...subscription,
+      destinationChannelId: "other-channel",
+      id: "other-subscription",
+    };
+    const fake = fakePorts([]);
+    const persisted: string[] = [];
+    const ports: PollingPorts = {
+      ...fake.ports,
+      repository: {
+        ...fake.ports.repository,
+        cursor: () => Effect.succeed("100"),
+        enabledSubscriptions: () => Effect.succeed([subscription, other]),
+        persistDiscoveryBatch: (current) =>
+          Effect.sync(() => persisted.push(current.id)),
+      },
+      source: {
+        ...fake.ports.source,
+        fetchAfter: (channelId) =>
+          channelId === subscription.destinationChannelId
+            ? Effect.fail(new DiscordApiError("temporary failure", 503, true))
+            : Effect.succeed([
+                {
+                  raw: {
+                    ...crosspost("101"),
+                    channel_id: other.destinationChannelId,
+                  },
+                },
+              ]),
+      },
+    };
+    await expect(
+      Effect.runPromise(
+        pollAll.pipe(Effect.provide(pollingServiceLayer(ports)))
+      )
+    ).rejects.toThrow("Polling failed");
+    expect(persisted).toStrictEqual([other.id]);
   });
 
   it("does not skip the first message after initializing an empty channel", async () => {
@@ -148,6 +223,27 @@ describe("announcement discovery integration", () => {
       pollAll.pipe(Effect.provide(pollingServiceLayer(fake.ports)))
     );
     expect(fake.sent()).toStrictEqual(["delivery-101"]);
+  });
+
+  it("initializes from the latest existing message without emailing history", async () => {
+    const fake = fakePorts([[crosspost("200"), crosspost("201")]], null);
+    const ports: PollingPorts = {
+      ...fake.ports,
+      source: {
+        ...fake.ports.source,
+        fetchLatest: () => Effect.succeed([{ raw: crosspost("200") }]),
+      },
+    };
+    await Effect.runPromise(
+      pollAll.pipe(Effect.provide(pollingServiceLayer(ports)))
+    );
+    expect(fake.cursor()).toBe("200");
+    expect(fake.sent()).toStrictEqual([]);
+
+    await Effect.runPromise(
+      pollAll.pipe(Effect.provide(pollingServiceLayer(ports)))
+    );
+    expect(fake.sent()).toStrictEqual(["delivery-201"]);
   });
 
   it("does not advance the cursor if a later page fails", async () => {

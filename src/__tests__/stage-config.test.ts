@@ -16,4 +16,11 @@ describe("worker stage configuration", () => {
       name: "discord-announcement-email-bridge-pr-123",
     });
   });
+
+  it("leaves non-production local stages without a cron", () => {
+    expect(workerStageConfig("local")).toStrictEqual({
+      crons: [],
+      name: "discord-announcement-email-bridge-local",
+    });
+  });
 });

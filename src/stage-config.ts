@@ -6,9 +6,8 @@ export interface WorkerStageConfig {
 }
 
 export function workerStageConfig(stage: string): WorkerStageConfig {
-  const isPullRequestPreview = /^pr-[1-9]\d*$/u.test(stage);
   return {
-    crons: isPullRequestPreview ? [] : ["* * * * *"],
+    crons: stage === "prod" ? ["* * * * *"] : [],
     name:
       stage === "prod"
         ? `${workerBaseName}-prod`

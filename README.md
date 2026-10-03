@@ -71,7 +71,7 @@ bunx alchemy plan --stage $env:ALCHEMY_STAGE
 bunx alchemy deploy --stage $env:ALCHEMY_STAGE
 ```
 
-Never use a production profile or stage for preview builds. The one-minute Cron polls the configured destination; D1 migrations are applied by Alchemy. The dead-letter queue name is bound directly from the stage-specific Alchemy queue resource, so previews do not need a manually copied production queue name.
+Never use a production profile or stage for preview builds. Only the `prod` stage receives the one-minute Cron; local and PR stages have no automatic polling. D1 migrations are applied by Alchemy. The dead-letter queue name is bound directly from the stage-specific Alchemy queue resource, so previews do not need a manually copied production queue name.
 
 - `GET /healthz` reports basic liveness and the stage/version.
 - `GET /admin/status` requires `Authorization: Bearer <ADMIN_TOKEN>` and reports cursor activity and delivery counts.

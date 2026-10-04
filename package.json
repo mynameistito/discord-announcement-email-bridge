@@ -1,7 +1,23 @@
 {
+  "$schema": "https://json.schemastore.org/package.json",
   "name": "discord-announcement-email-bridge",
   "version": "0.1.0",
   "private": true,
+  "description": "A Cloudflare Worker that emails verified Discord announcement crossposts.",
+  "keywords": [
+    "cloudflare-workers",
+    "discord",
+    "email",
+    "resend"
+  ],
+  "homepage": "https://github.com/mynameistito/discord-announcement-email-bridge#readme",
+  "bugs": {
+    "url": "https://github.com/mynameistito/discord-announcement-email-bridge/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mynameistito/discord-announcement-email-bridge.git"
+  },
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",

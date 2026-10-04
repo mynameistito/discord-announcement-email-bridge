@@ -4,94 +4,26 @@ on:
   workflow_run:
     workflows: [CI]
     types: [completed]
-  pull_request:
+  pull_request_target:
     types: [closed]
 
 jobs:
   deploy:
     if: >-
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && ((github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') || (github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.head_repository.full_name == github.repository))) || (github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.head.repo.full_name == github.repository)
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && ((github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') || (github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.head_repository.full_name == github.repository))) || (github.event_name == 'pull_request_target' && github.event.action == 'closed' && github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-24.04
     concurrency:
-      group: discord-announcement-email-bridge-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.event.workflow_run.event == 'pull_request' && format('pr-{0}', github.event.workflow_run.pull_requests[0].number) || github.event.workflow_run.event == 'push' && 'prod' || 'invalid' }}
+      group: alchemy-deploy-${{ github.event_name == 'pull_request_target' && format('pr-{0}', github.event.pull_request.number) || github.event.workflow_run.event == 'pull_request' && format('pr-{0}', github.event.workflow_run.pull_requests[0].number) || github.event.workflow_run.event == 'push' && 'prod' || 'invalid' }}
       cancel-in-progress: false
     permissions:
       actions: read
       contents: read
-      pull-requests: read
-    env:
-      ALCHEMY_STAGE: ${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.event.workflow_run.event == 'pull_request' && format('pr-{0}', github.event.workflow_run.pull_requests[0].number) || 'prod' }}
-      BUILD_VERSION: ${{ github.event.workflow_run.head_sha || github.sha }}
-      PREBUILT_WORKER: ${{ github.event_name == 'workflow_run' && 'true' || 'false' }}
-      STAGE: ${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.event.workflow_run.event == 'pull_request' && format('pr-{0}', github.event.workflow_run.pull_requests[0].number) || 'prod' }}
+      deployments: write
+      pull-requests: write
     steps:
-      - name: Check that the preview pull request is still open
-        id: preview_pr
-        if: github.event_name == 'workflow_run' && github.event.workflow_run.event == 'pull_request'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
-        run: |
-          pull_request="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
-          is_open="$(printf '%s' "$pull_request" | jq -r '.state == "open"')"
-          head_sha="$(printf '%s' "$pull_request" | jq -r '.head.sha')"
-          printf 'open=%s\n' "$is_open" >> "$GITHUB_OUTPUT"
-          printf 'head_sha=%s\n' "$head_sha" >> "$GITHUB_OUTPUT"
-
-      - name: Check out trusted deployment code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_sha || github.event.repository.default_branch }}
-          persist-credentials: false
-
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version: 1.4.2
-
-      - run: bun install --frozen-lockfile
-
-      - name: Download the CI-built Worker bundle
-        if: github.event_name == 'workflow_run'
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: worker-bundle
-          path: dist
-          repository: ${{ github.repository }}
-          run-id: ${{ github.event.workflow_run.id }}
-          github-token: ${{ github.token }}
-
-      - name: Verify the downloaded Worker bundle
-        if: github.event_name == 'workflow_run'
-        run: test -s dist/worker.js
-
-      - name: Check that the CI bundle is still current
-        id: current_run
-        if: github.event_name == 'workflow_run'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RUN_EVENT: ${{ github.event.workflow_run.event }}
-          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
-          PR_OPEN: ${{ steps.preview_pr.outputs.open }}
-          PR_HEAD_SHA: ${{ steps.preview_pr.outputs.head_sha }}
-        run: |
-          if [ "$RUN_EVENT" = push ]; then
-            current_sha="$(gh api "repos/${GITHUB_REPOSITORY}/branches/main" --jq '.commit.sha')"
-          elif [ "$RUN_EVENT" = pull_request ] && [ "$PR_OPEN" = true ]; then
-            current_sha="$PR_HEAD_SHA"
-          else
-            current_sha=""
-          fi
-
-          if [ -n "$current_sha" ] && [ "$RUN_SHA" = "$current_sha" ]; then
-            printf 'current=true\n' >> "$GITHUB_OUTPUT"
-          else
-            printf 'current=false\n' >> "$GITHUB_OUTPUT"
-            echo "::notice::Skipping stale CI bundle $RUN_SHA; current stage head is ${current_sha:-unavailable}."
-          fi
-
       - name: Load production credentials from 1Password
         id: op_production
-        if: github.event_name == 'workflow_run' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' && steps.current_run.outputs.current == 'true'
+        if: github.event_name == 'workflow_run' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main'
         uses: 1password/load-secrets-action@70062d7a876d3eb6334754fa26efd2fbd90c32f2 # v5.0.1
         with:
           version: 2.34.1
@@ -110,10 +42,7 @@ jobs:
 
       - name: Load preview credentials from 1Password
         id: op_preview
-        if: >-
-          github.event_name == 'workflow_run' && github.event.workflow_run.event == 'pull_request' &&
-           github.event.workflow_run.head_repository.full_name == github.repository &&
-          steps.preview_pr.outputs.open == 'true' && steps.current_run.outputs.current == 'true'
+        if: github.event_name == 'workflow_run' && github.event.workflow_run.event == 'pull_request'
         uses: 1password/load-secrets-action@70062d7a876d3eb6334754fa26efd2fbd90c32f2 # v5.0.1
         with:
           version: 2.34.1
@@ -121,18 +50,10 @@ jobs:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           CLOUDFLARE_API_TOKEN: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/CLOUDFLARE_API_TOKEN
           CLOUDFLARE_ACCOUNT_ID: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/CLOUDFLARE_ACCOUNT_ID
-          DISCORD_BOT_TOKEN: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/DISCORD_PREVIEW_BOT_TOKEN
-          DISCORD_GUILD_ID: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/DISCORD_GUILD_ID
-          DISCORD_TARGET_CHANNEL_ID: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/DISCORD_PREVIEW_TARGET_CHANNEL_ID
-          EMAIL_TO: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/EMAIL_TO
-          RESEND_API_KEY: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/RESEND_PREVIEW_API_KEY
-          EMAIL_FROM_NAME: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/EMAIL_FROM_NAME
-          EMAIL_FROM_EMAIL: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/EMAIL_FROM_EMAIL
-          ADMIN_TOKEN: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/ADMIN_PREVIEW_TOKEN
 
       - name: Load preview cleanup credentials from 1Password
         id: op_cleanup
-        if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+        if: github.event_name == 'pull_request_target' && github.event.action == 'closed'
         uses: 1password/load-secrets-action@70062d7a876d3eb6334754fa26efd2fbd90c32f2 # v5.0.1
         with:
           version: 2.34.1
@@ -141,36 +62,12 @@ jobs:
           CLOUDFLARE_API_TOKEN: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/CLOUDFLARE_API_TOKEN
           CLOUDFLARE_ACCOUNT_ID: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/CLOUDFLARE_ACCOUNT_ID
 
-      - name: Recheck stage head immediately before deployment
-        id: deploy_current
-        if: github.event_name == 'workflow_run'
+      - name: Run Alchemy deployment
+        uses: mynameistito/alchemy-deploy@02ab31c8b67974e0aaf71b02e654f3ffda8de62c # v3.1.3
         env:
-          GH_TOKEN: ${{ github.token }}
-          RUN_EVENT: ${{ github.event.workflow_run.event }}
-          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
-          PR_OPEN: ${{ steps.preview_pr.outputs.open }}
-          PR_HEAD_SHA: ${{ steps.preview_pr.outputs.head_sha }}
-        run: |
-          if [ "$RUN_EVENT" = push ]; then
-            current_sha="$(gh api "repos/${GITHUB_REPOSITORY}/branches/main" --jq '.commit.sha')"
-          elif [ "$RUN_EVENT" = pull_request ] && [ "$PR_OPEN" = true ]; then
-            current_sha="$PR_HEAD_SHA"
-          else
-            current_sha=""
-          fi
-
-          if [ -n "$current_sha" ] && [ "$RUN_SHA" = "$current_sha" ]; then
-            printf 'current=true\n' >> "$GITHUB_OUTPUT"
-          else
-            printf 'current=false\n' >> "$GITHUB_OUTPUT"
-            echo "::notice::Skipping stale CI bundle $RUN_SHA; current stage head is ${current_sha:-unavailable}."
-          fi
-
-      - name: Deploy production Worker
-        if: github.event_name == 'workflow_run' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' && steps.deploy_current.outputs.current == 'true'
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ steps.op_production.outputs.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ steps.op_production.outputs.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.op_production.outputs.CLOUDFLARE_ACCOUNT_ID || steps.op_preview.outputs.CLOUDFLARE_ACCOUNT_ID || steps.op_cleanup.outputs.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ steps.op_production.outputs.CLOUDFLARE_API_TOKEN || steps.op_preview.outputs.CLOUDFLARE_API_TOKEN || steps.op_cleanup.outputs.CLOUDFLARE_API_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DISCORD_BOT_TOKEN: ${{ steps.op_production.outputs.DISCORD_BOT_TOKEN }}
           DISCORD_GUILD_ID: ${{ steps.op_production.outputs.DISCORD_GUILD_ID }}
           DISCORD_TARGET_CHANNEL_ID: ${{ steps.op_production.outputs.DISCORD_TARGET_CHANNEL_ID }}
@@ -179,44 +76,17 @@ jobs:
           EMAIL_FROM_NAME: ${{ steps.op_production.outputs.EMAIL_FROM_NAME }}
           EMAIL_FROM_EMAIL: ${{ steps.op_production.outputs.EMAIL_FROM_EMAIL }}
           ADMIN_TOKEN: ${{ steps.op_production.outputs.ADMIN_TOKEN }}
-        run: bunx --no-install alchemy deploy --stage "$ALCHEMY_STAGE" --yes
-
-      - name: Deploy PR preview Worker
-        if: github.event_name == 'workflow_run' && github.event.workflow_run.event == 'pull_request' && steps.preview_pr.outputs.open == 'true' && steps.deploy_current.outputs.current == 'true'
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ steps.op_preview.outputs.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ steps.op_preview.outputs.CLOUDFLARE_ACCOUNT_ID }}
-          DISCORD_BOT_TOKEN: ${{ steps.op_preview.outputs.DISCORD_BOT_TOKEN }}
-          DISCORD_GUILD_ID: ${{ steps.op_preview.outputs.DISCORD_GUILD_ID }}
-          DISCORD_TARGET_CHANNEL_ID: ${{ steps.op_preview.outputs.DISCORD_TARGET_CHANNEL_ID }}
-          EMAIL_TO: ${{ steps.op_preview.outputs.EMAIL_TO }}
-          RESEND_API_KEY: ${{ steps.op_preview.outputs.RESEND_API_KEY }}
-          EMAIL_FROM_NAME: ${{ steps.op_preview.outputs.EMAIL_FROM_NAME }}
-          EMAIL_FROM_EMAIL: ${{ steps.op_preview.outputs.EMAIL_FROM_EMAIL }}
-          ADMIN_TOKEN: ${{ steps.op_preview.outputs.ADMIN_TOKEN }}
-        run: bunx --no-install alchemy deploy --stage "$ALCHEMY_STAGE" --yes
-
-      - name: Destroy closed PR preview
-        if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.head.repo.full_name == github.repository
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ steps.op_cleanup.outputs.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ steps.op_cleanup.outputs.CLOUDFLARE_ACCOUNT_ID }}
-        run: bunx --no-install alchemy destroy --stage "$ALCHEMY_STAGE" --yes
-
-      - name: Report deployment URL
-        if: >-
-          (github.event_name == 'workflow_run' &&
-           github.event.workflow_run.event == 'push' &&
-           github.event.workflow_run.head_branch == 'main' &&
-           steps.deploy_current.outputs.current == 'true') ||
-          (github.event_name == 'workflow_run' &&
-           github.event.workflow_run.event == 'pull_request' &&
-           steps.preview_pr.outputs.open == 'true' &&
-           steps.deploy_current.outputs.current == 'true')
-        run: |
-          if [ "$ALCHEMY_STAGE" = prod ]; then
-            url="https://discord-announcement-email-bridge-prod.mynameistito.workers.dev"
-          else
-            url="https://discord-announcement-email-bridge-${ALCHEMY_STAGE}.mynameistito.workers.dev"
-          fi
-          printf 'Deployed `%s` to %s\n' "$ALCHEMY_STAGE" "$url" >> "$GITHUB_STEP_SUMMARY"
+        with:
+          worker-name: discord-announcement-email-bridge-prod
+          deploy-command: ALCHEMY_STAGE="$STAGE" BUILD_VERSION="$DEPLOYMENT_SHA" bunx --no-install alchemy deploy --stage "$STAGE" --yes
+          destroy-command: ALCHEMY_STAGE="$STAGE" bunx --no-install alchemy destroy --stage "$STAGE" --yes
+          production-stage: prod
+          production-branch: main
+          production-url: https://discord-announcement-email-bridge-prod.mynameistito.workers.dev
+          preview-url-pattern: https://{stage}-{worker}.*.workers.dev
+          preview-artifact: worker-bundle
+          preview-entrypoint: worker.js
+          preview-compatibility-date: "2026-10-03"
+          preview-compatibility-flags: '["nodejs_compat"]'
+          worker-config: >-
+            {"BUILD_VERSION":"${{ github.event.workflow_run.head_sha || github.sha }}","STAGE":"${{ github.event.workflow_run.event == 'pull_request' && format('pr-{0}', github.event.workflow_run.pull_requests[0].number) || 'preview' }}"}

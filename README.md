@@ -100,51 +100,73 @@ Never use a production profile or stage for preview builds. Only the `prod` stag
 
 Logs contain event names, delivery IDs, and sanitized error messages; do not add email addresses, message contents, or tokens to logs. An edited Discord message does not trigger a new email. A deleted message cannot recall mail already sent.
 
-### End-to-end smoke test
+### Local end-to-end test
 
-The production `prod` stage polls every minute and uses the production `RESEND_API_KEY` and `EMAIL_TO`. A successful test sends a real email. Before testing production, confirm `EMAIL_TO` is a test mailbox you control and `EMAIL_FROM_EMAIL` is a verified sender. If either value changes in 1Password, redeploy so the Worker receives the updated binding.
+Run the full test only against a dedicated non-production Alchemy stage, Discord test bot and followed test channel, Resend test key/sender, and test recipient. Never use the `prod` stage or production credentials. The test sends an email to the configured test recipient. Alchemy stages isolate the Worker, D1 database, and Queues; non-production stages have no Cron Trigger.
 
-1. Confirm the bot is in the destination server, can read the configured destination channel, and can access its follower webhook metadata. Confirm the source Announcement Channel is followed into that destination.
-2. Authenticate to Cloudflare Access for the Worker hostname. Admin calls also require `Authorization: Bearer <ADMIN_TOKEN>`; Access and the Worker bearer token are separate checks. For command-line/API-client testing, use a Cloudflare Access service token:
-   - In **Cloudflare Zero Trust → Access → Service Auth → Service Tokens**, create a token and copy its Client ID and Client Secret into a password manager. The secret is shown only once.
-   - In **Access → Applications**, open the application protecting the Worker hostname and add a **Service Auth** policy that includes this service token. Keep the existing interactive policy; do not make the Worker public or add a Bypass policy.
-   - In the `discord-announcement-email-bridge` item in the `github-actions` 1Password vault, add `CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET` fields for this local test client. Keep the service token and `ADMIN_TOKEN` in 1Password; neither is a Worker code change, and the Access fields are not deployment bindings.
-3. Check `GET /admin/status` before testing. Only a brand-new subscription with no saved cursor gets a baseline on its first poll; that poll seeds at the newest message and skips history. Production may already have an initialized cursor. On an existing subscription, a poll processes all unseen valid crossposts and can queue real email, so it is not a harmless baseline.
-4. Publish a new test announcement in the followed source channel. Confirm its crosspost appears in the configured destination channel, then wait up to one minute for the Cron Trigger. If you manually call `POST /admin/poll`, do so only after the test crosspost appears and expect it to process every unseen valid crosspost, not only the test.
-5. Check the test mailbox and Resend delivery logs. `GET /admin/status` reports `lastPoll`, `pendingDeliveries`, and `failedDeliveries`; queue delivery is asynchronous, so allow time for pending deliveries to finish. A normal message in the destination channel is not a valid test.
+Add these fields to the `discord-announcement-email-bridge` item in the `github-actions` 1Password vault, using dedicated test resources and values (do not copy the production Discord guild, channel, recipient, or Resend credentials):
 
-Install and sign in to the 1Password CLI (`op`) first. Then load the values from the existing 1Password item into this PowerShell session. `ADMIN_TOKEN` is already a deployment field; add the two `CF_ACCESS_*` fields as described above. The commands print no secret values:
+- `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`
+- `DISCORD_E2E_BOT_TOKEN`, `DISCORD_E2E_GUILD_ID`, `DISCORD_E2E_TARGET_CHANNEL_ID`
+- `EMAIL_E2E_TO`, `RESEND_E2E_API_KEY`, `EMAIL_E2E_FROM_NAME`, `EMAIL_E2E_FROM_EMAIL`
+- `ADMIN_E2E_TOKEN`
+- `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET` if Cloudflare Access protects the test Worker hostname
+
+Install and sign in to the 1Password CLI (`op`), then load these fields into the current PowerShell session. The commands do not print secret values:
 
 ```powershell
 $item = "op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4"
-$env:ADMIN_TOKEN = op read "$item/ADMIN_TOKEN"
-$env:CF_ACCESS_CLIENT_ID = op read "$item/CF_ACCESS_CLIENT_ID"
-$env:CF_ACCESS_CLIENT_SECRET = op read "$item/CF_ACCESS_CLIENT_SECRET"
-
-$url = "https://discord-announcement-email-bridge-prod.mynameistito.workers.dev"
-$headers = @{ Authorization = "Bearer $env:ADMIN_TOKEN" }
-$headers["CF-Access-Client-Id"] = $env:CF_ACCESS_CLIENT_ID
-$headers["CF-Access-Client-Secret"] = $env:CF_ACCESS_CLIENT_SECRET
-
-Invoke-RestMethod -Method Get -Uri "$url/admin/status" -Headers $headers
+$env:CLOUDFLARE_API_TOKEN = op read "$item/CLOUDFLARE_API_TOKEN"
+$env:CLOUDFLARE_ACCOUNT_ID = op read "$item/CLOUDFLARE_ACCOUNT_ID"
+$env:DISCORD_BOT_TOKEN = op read "$item/DISCORD_E2E_BOT_TOKEN"
+$env:DISCORD_GUILD_ID = op read "$item/DISCORD_E2E_GUILD_ID"
+$env:DISCORD_TARGET_CHANNEL_ID = op read "$item/DISCORD_E2E_TARGET_CHANNEL_ID"
+$env:EMAIL_TO = op read "$item/EMAIL_E2E_TO"
+$env:RESEND_API_KEY = op read "$item/RESEND_E2E_API_KEY"
+$env:EMAIL_FROM_NAME = op read "$item/EMAIL_E2E_FROM_NAME"
+$env:EMAIL_FROM_EMAIL = op read "$item/EMAIL_E2E_FROM_EMAIL"
+$env:ADMIN_TOKEN = op read "$item/ADMIN_E2E_TOKEN"
+# If the test Worker is behind Cloudflare Access, also load:
+# $env:CF_ACCESS_CLIENT_ID = op read "$item/CF_ACCESS_CLIENT_ID"
+# $env:CF_ACCESS_CLIENT_SECRET = op read "$item/CF_ACCESS_CLIENT_SECRET"
+$env:ALCHEMY_STAGE = "e2e-myname"
+$env:STAGE = $env:ALCHEMY_STAGE
 ```
 
-For a brand-new subscription only, run this once before publishing to seed the cursor, and only when there are no unseen announcements you expect to deliver. For an existing production subscription, skip the baseline poll. After the test crosspost appears, you can force a poll with:
+1. Confirm the test bot can read the test destination channel and its follower webhook metadata, and that a test source Announcement Channel is followed into it. The bot needs the permissions described above, limited to the test channel.
+2. Deploy the isolated stage and note the URL printed by Alchemy:
+
+   ```powershell
+   bunx alchemy plan --stage $env:ALCHEMY_STAGE
+   bunx alchemy deploy --stage $env:ALCHEMY_STAGE
+   ```
+
+3. Set the URL printed by Alchemy and build headers for admin calls. If Access protects the Worker, the same headers also include its service token:
+
+   ```powershell
+   $url = Read-Host "Non-production Worker URL"
+   $headers = @{ Authorization = "Bearer $env:ADMIN_TOKEN" }
+   if ($env:CF_ACCESS_CLIENT_ID -and $env:CF_ACCESS_CLIENT_SECRET) {
+     $headers["CF-Access-Client-Id"] = $env:CF_ACCESS_CLIENT_ID
+     $headers["CF-Access-Client-Secret"] = $env:CF_ACCESS_CLIENT_SECRET
+   }
+   Invoke-RestMethod -Method Get -Uri "$url/healthz" -Headers $headers
+   Invoke-RestMethod -Method Get -Uri "$url/admin/status" -Headers $headers
+   ```
+
+   If status shows a new subscription with no cursor, first confirm the test channel has no unseen test announcements you want delivered, then initialize it with `Invoke-RestMethod -Method Post -Uri "$url/admin/poll" -Headers $headers`. That first poll seeds at the latest observed message and skips history.
+4. Publish one test announcement in the followed source channel and confirm its crosspost appears in the test destination channel. Then invoke `Invoke-RestMethod -Method Post -Uri "$url/admin/poll" -Headers $headers`. **A poll processes all unseen eligible crossposts for enabled subscriptions, not just the announcement you intend to test.** Keep the test destination and recipient isolated accordingly.
+5. Check the test mailbox, Resend delivery logs, and `/admin/status`. Queue delivery is asynchronous; allow pending deliveries to finish. A normal destination-channel message is not a valid test. Do not use `/admin/replay` as a smoke test; it can resend previously failed deliveries.
+
+When finished, destroy only this test stage and clear the loaded values from the shell:
 
 ```powershell
-Invoke-RestMethod -Method Post -Uri "$url/admin/poll" -Headers $headers
-```
-
-Or skip the manual poll and wait for production's next scheduled poll.
-
-When finished, remove the credentials from the current shell:
-
-```powershell
-"ADMIN_TOKEN", "CF_ACCESS_CLIENT_ID", "CF_ACCESS_CLIENT_SECRET" | ForEach-Object {
+bunx alchemy destroy --stage $env:ALCHEMY_STAGE
+"CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "DISCORD_BOT_TOKEN", "DISCORD_GUILD_ID", "DISCORD_TARGET_CHANNEL_ID", "EMAIL_TO", "RESEND_API_KEY", "EMAIL_FROM_NAME", "EMAIL_FROM_EMAIL", "ADMIN_TOKEN", "CF_ACCESS_CLIENT_ID", "CF_ACCESS_CLIENT_SECRET", "ALCHEMY_STAGE", "STAGE" | ForEach-Object {
   Remove-Item "Env:$_" -ErrorAction SilentlyContinue
 }
 ```
 
-Do not use `/admin/replay` as a smoke test; it requeues failed deliveries and may send email again.
+PR CI has no credentials and does not run the poll or send email. It tests the secret-free `/healthz` handler and builds the Worker artifact. The pinned `mynameistito/alchemy-deploy` action does not expose its resolved preview URL as an output; its configured URL pattern is only used internally for deployment reporting. Therefore CI does not claim to smoke-test the deployed PR runtime. Adding that safely requires a stable URL output or another trusted way to resolve the URL from the deployment action.
 
 See [ADR 0001](docs/adr/0001-polling-and-durable-delivery.md) for the polling, classification, and delivery design.

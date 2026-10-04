@@ -20,6 +20,7 @@ jobs:
           bun-version: 1.4.2
       - run: bun install --frozen-lockfile
       - run: bun run check
+      - run: bun run knip
       - run: bun run typecheck
       - run: bun run test
 

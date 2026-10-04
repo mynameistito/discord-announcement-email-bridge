@@ -22,6 +22,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "knip": "knip",
     "check": "ultracite check",
     "format": "ultracite fix",
     "build": "bun build src/worker.ts --target=browser --outdir=dist",
@@ -45,6 +46,7 @@
     "eslint-plugin-jsdoc": "^65.1.0",
     "eslint-plugin-sonarjs": "^4.2.1",
     "eslint-plugin-tsdoc": "^0.5.2",
+    "knip": "6.39.0",
     "lefthook": "^2.1.16",
     "oxfmt": "^0.71.0",
     "oxlint": "^1.86.0",

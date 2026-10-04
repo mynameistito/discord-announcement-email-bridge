@@ -1,23 +1,28 @@
 import { Schema } from "effect";
 
+/** Runtime contract for the source-message reference attached to a crosspost. */
 const RefSchema = Schema.Struct({
   channel_id: Schema.String,
   guild_id: Schema.String,
   message_id: Schema.String,
 });
 
+/** Runtime contract for the author field used in announcement emails. */
 const AuthorSchema = Schema.Struct({ username: Schema.String });
 
+/** Runtime contract for attachment names and downloadable URLs. */
 const AttachmentSchema = Schema.Struct({
   filename: Schema.String,
   url: Schema.String,
 });
 
+/** Runtime contract for the optional name and value of a Discord embed field. */
 const EmbedFieldSchema = Schema.Struct({
   name: Schema.optionalKey(Schema.String),
   value: Schema.optionalKey(Schema.String),
 });
 
+/** Runtime contract for the subset of embed content rendered by the bridge. */
 const EmbedSchema = Schema.Struct({
   description: Schema.optionalKey(Schema.String),
   fields: Schema.optionalKey(Schema.Array(EmbedFieldSchema)),
@@ -27,7 +32,10 @@ const EmbedSchema = Schema.Struct({
   url: Schema.optionalKey(Schema.String),
 });
 
-/** Minimal message data consumed by classification and rendering. */
+/**
+ * Runtime validator for the Discord message fields used by classification,
+ * persistence, and email rendering; unrelated Discord properties are ignored.
+ */
 export const MessageSchema = Schema.Struct({
   attachments: Schema.Array(AttachmentSchema),
   author: AuthorSchema,
@@ -43,10 +51,10 @@ export const MessageSchema = Schema.Struct({
   webhook_id: Schema.optionalKey(Schema.String),
 });
 
-/** Parsed subset of a Discord message. */
+/** Static message type inferred from {@link MessageSchema}. */
 export type DiscordMessage = typeof MessageSchema.Type;
 
-/** External webhook metadata used to verify Channel Follower origin. */
+/** Runtime validator for webhook metadata used to verify Channel Follower origin. */
 export const WebhookSchema = Schema.Struct({
   id: Schema.String,
   source_channel: Schema.optionalKey(Schema.Struct({ id: Schema.String })),
@@ -54,32 +62,56 @@ export const WebhookSchema = Schema.Struct({
   type: Schema.Number,
 });
 
-/** Parse the webhook metadata subset required for follower verification. */
+/** Static webhook type inferred from {@link WebhookSchema}. */
 export type FollowerWebhook = typeof WebhookSchema.Type;
 
-/** Configuration for one destination-channel subscription. */
+/**
+ * Configuration for one destination channel and its email recipient.
+ * Optional source identifiers further constrain accepted follower crossposts.
+ */
 export interface Subscription {
+  /** Durable identity for the configured destination subscription. */
   readonly id: string;
+  /** Discord guild containing the followed destination channel. */
   readonly destinationGuildId: string;
+  /** Discord channel containing follower copies to inspect. */
   readonly destinationChannelId: string;
+  /** Email recipient for verified announcements. */
   readonly emailTo: string;
+  /** Optional source guild allowlist for follower attribution. */
   readonly sourceGuildId?: string;
+  /** Optional source channel allowlist for follower attribution. */
   readonly sourceChannelId?: string;
 }
 
-/** Persistable classified crosspost. */
+/**
+ * A verified follower crosspost enriched with its source identifiers and
+ * subscription identity for durable storage and later delivery.
+ */
 export interface Announcement {
+  /** Subscription responsible for this discovered announcement. */
   readonly subscriptionId: string;
+  /** Validated Discord follower-copy message used for rendering. */
   readonly message: DiscordMessage;
+  /** Original source guild attributed by the follower reference. */
   readonly sourceGuildId: string;
+  /** Original source channel attributed by the follower reference. */
   readonly sourceChannelId: string;
+  /** Original source message snowflake attributed by the follower reference. */
   readonly sourceMessageId: string;
+  /** Webhook ID whose metadata confirmed the follower relationship. */
   readonly followerWebhookId: string;
 }
 
+/**
+ * Check Discord's message flags for the crossposted bit.
+ * @param flags - Numeric bitfield returned by Discord.
+ * @returns Whether bit 1 (the crossposted flag) is set.
+ */
 export const hasCrosspostFlag = (flags: number): boolean =>
   flags >= 2 && Math.floor(flags / 2) % 2 === 1;
 
+/** Confirm that a message's webhook is the follower for its referenced source. */
 const matchesFollowerWebhook = (
   message: DiscordMessage,
   webhook: FollowerWebhook | null,
@@ -94,6 +126,7 @@ const matchesFollowerWebhook = (
   return webhook.source_channel?.id === reference.channel_id;
 };
 
+/** Confirm that destination and optional configured source IDs match. */
 const matchesSubscription = (
   message: DiscordMessage,
   subscription: Subscription,
@@ -114,7 +147,11 @@ const matchesSubscription = (
   );
 };
 
-/** The only evidence accepted as a followed announcement copy. */
+/**
+ * Classify a message only when Discord's crosspost flag, reference, follower
+ * webhook metadata, destination, and configured source constraints agree.
+ * @returns The normalized announcement, or `undefined` for an unverified message.
+ */
 export const classifyFollowerMessage = (
   message: DiscordMessage,
   webhook: FollowerWebhook | null,
@@ -143,7 +180,10 @@ export const classifyFollowerMessage = (
   };
 };
 
-/** Compare Discord snowflakes without converting 64-bit values to Number. */
+/**
+ * Compare decimal Discord snowflake identifiers without losing 64-bit precision.
+ * @returns A negative value, zero, or positive value according to numeric order.
+ */
 export const compareSnowflakes = (left: string, right: string): number => {
   const a = BigInt(left);
   const b = BigInt(right);
@@ -156,12 +196,13 @@ export const compareSnowflakes = (left: string, right: string): number => {
   return 0;
 };
 
-/** Sort messages in chronological order using their snowflake IDs. */
+/** Return a new message array ordered oldest-first by Discord snowflake ID. */
 export const oldestFirst = (
   messages: readonly DiscordMessage[]
 ): readonly DiscordMessage[] =>
   messages.toSorted((left, right) => compareSnowflakes(left.id, right.id));
 
+/** Escape HTML metacharacters before inserting untrusted Discord content. */
 const escapeHtml = (value: string): string =>
   value.replaceAll(/[&<>"']/gu, (character) => {
     switch (character) {
@@ -186,6 +227,7 @@ const escapeHtml = (value: string): string =>
     }
   });
 
+/** Allow only HTTP(S) destinations and escape them for safe HTML attributes. */
 const escapeAttribute = (value: string): string => {
   if (!/^https?:\/\//iu.test(value)) {
     return "#";
@@ -193,7 +235,7 @@ const escapeAttribute = (value: string): string => {
   return escapeHtml(value);
 };
 
-/** Render an HTML-escaped email for a discovered announcement. */
+/** Render announcement content as HTML, escaping text and validating links. */
 export const renderHtml = (announcement: Announcement): string => {
   const { message } = announcement;
   const content = escapeHtml(message.content);
@@ -224,7 +266,7 @@ export const renderHtml = (announcement: Announcement): string => {
   return `<main><p><strong>${escapeHtml(message.author.username)}</strong> · ${escapeHtml(message.timestamp)}</p><p>${content}</p>${embeds}<ul>${attachments}</ul><p><a href="https://discord.com/channels/${announcement.sourceGuildId}/${announcement.sourceChannelId}/${announcement.sourceMessageId}">View announcement</a></p></main>`;
 };
 
-/** Render a text/plain email for a discovered announcement. */
+/** Render announcement content as a plain-text email with readable sections. */
 export const renderText = (announcement: Announcement): string => {
   const { message } = announcement;
   const embeds = message.embeds

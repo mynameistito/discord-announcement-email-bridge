@@ -2,7 +2,10 @@ import { Effect } from "effect";
 
 import type { Announcement } from "@/domain";
 
-/** Create a stable logical delivery identity using a hash of the recipient. */
+/**
+ * Create a stable provider idempotency key scoped to one subscription,
+ * announcement, and case-insensitive recipient without exposing the address.
+ */
 export const idempotencyKey = (
   announcement: Announcement,
   recipient: string

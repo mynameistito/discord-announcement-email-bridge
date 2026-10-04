@@ -15,6 +15,7 @@ import type { FollowerWebhook } from "@/domain";
 
 export type { FollowerWebhook } from "@/domain";
 
+/** Map SDK error tags to HTTP status codes for retry classification. */
 const errorStatuses = new Map([
   ["BadGateway", 502],
   ["BadRequest", 400],
@@ -30,6 +31,7 @@ const errorStatuses = new Map([
   ["UnprocessableEntity", 422],
 ]);
 
+/** Convert SDK failures into sanitized Discord errors with retry metadata. */
 const toDiscordApiError = (cause: unknown): DiscordApiError => {
   if (cause instanceof DiscordApiError) {
     return cause;
@@ -54,6 +56,7 @@ const toDiscordApiError = (cause: unknown): DiscordApiError => {
   );
 };
 
+/** Compose the fetch, bot credential, and Discord protocol layers. */
 const discordLayer = (env: WorkerEnv) =>
   Layer.mergeAll(
     fetchLayer,
@@ -61,6 +64,7 @@ const discordLayer = (env: WorkerEnv) =>
     DiscordProtocol
   );
 
+/** Fetch one Discord message page without SDK retries or eager decoding. */
 const messages = (
   env: WorkerEnv,
   channelId: string,
@@ -79,6 +83,7 @@ const messages = (
       Effect.provide(discordLayer(env))
     );
 
+/** Fetch and validate webhook metadata; represent missing webhooks as null. */
 const webhook = (
   env: WorkerEnv,
   webhookId: string
@@ -105,7 +110,10 @@ const webhook = (
     Effect.provide(discordLayer(env))
   );
 
-/** Create Discord polling ports using the Effect-native Discord SDK. */
+/**
+ * Create polling ports bound to the supplied Worker's bot credentials.
+ * Returned methods expose page-based message reads and validated webhook reads.
+ */
 export const makeDiscordSource = (env: WorkerEnv) => ({
   fetchAfter: (channelId: string, after: string) =>
     messages(env, channelId, { after }),
@@ -115,4 +123,5 @@ export const makeDiscordSource = (env: WorkerEnv) => ({
   getWebhook: (webhookId: string) => webhook(env, webhookId),
 });
 
+/** Type of the Discord polling adapter returned by {@link makeDiscordSource}. */
 export type DiscordSource = ReturnType<typeof makeDiscordSource>;

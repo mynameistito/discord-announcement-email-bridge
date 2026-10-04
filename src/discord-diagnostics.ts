@@ -1,17 +1,21 @@
 import { Schema } from "effect";
 
+/** Runtime validator for the safe Discord error fields used in diagnostics. */
 export const DiscordErrorPayloadSchema = Schema.Struct({
   code: Schema.Number,
   message: Schema.optional(Schema.String),
 });
 
+/** Static type inferred from {@link DiscordErrorPayloadSchema}. */
 export type DiscordErrorPayload = typeof DiscordErrorPayloadSchema.Type;
 
+/** Sanitized route metadata that never contains actual Discord resource IDs. */
 interface SafeRoute {
   readonly name: string;
   readonly requiredPermissions?: string;
 }
 
+/** Replace known resource paths with templates and their required permissions. */
 const safeRoute = (path: string): SafeRoute => {
   if (/^\/channels\/[^/]+\/messages(?:\?|$)/u.test(path)) {
     return {
@@ -28,6 +32,7 @@ const safeRoute = (path: string): SafeRoute => {
   return { name: "an endpoint" };
 };
 
+/** Resolve known Discord error codes to safe, stable human-readable labels. */
 const discordErrorMessage = (code: number | undefined): string | null => {
   switch (code) {
     case 50_001: {
@@ -42,7 +47,10 @@ const discordErrorMessage = (code: number | undefined): string | null => {
   }
 };
 
-/** Describe a Discord REST failure without exposing resource IDs or response bodies. */
+/**
+ * Describe a Discord REST failure using a templated route and selected error
+ * metadata, excluding resource IDs and arbitrary response text.
+ */
 export const describeDiscordFailure = (
   path: string,
   status: number,

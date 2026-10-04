@@ -1,7 +1,7 @@
 import { Queues } from "alchemy/Cloudflare";
 
-/** Queue for asynchronous, at-least-once email delivery. */
+/** Provision the asynchronous queue carrying durable email delivery IDs. */
 export const DeliveryQueue = Queues.Queue("DeliveryQueue");
 
-/** Dead-letter queue for delivery messages that exhaust platform retries. */
+/** Provision the queue that receives delivery messages after platform retries. */
 export const DeliveryDeadLetterQueue = Queues.Queue("DeliveryDeadLetterQueue");

@@ -6,6 +6,10 @@ import { persistAndEnqueue } from "@/application/polling-deliveries";
 import { fetchHistory, initializeCursor } from "@/application/polling-history";
 import type { Subscription } from "@/domain";
 
+/**
+ * Poll one subscription from its cursor, initializing on first use or
+ * classifying and durably enqueueing newly discovered announcements.
+ */
 export const pollSubscription = (
   ports: PollingPorts,
   subscription: Subscription

@@ -6,6 +6,7 @@ import type { PollingPorts } from "@/application/polling";
 import { DiscordApiError } from "@/discord-api-error";
 import type { Subscription } from "@/domain";
 
+/** Minimal subscription fixture for history pagination use cases. */
 const subscription: Subscription = {
   destinationChannelId: "destination",
   destinationGuildId: "guild",

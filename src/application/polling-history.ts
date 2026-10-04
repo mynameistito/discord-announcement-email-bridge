@@ -13,12 +13,15 @@ import {
 } from "@/domain";
 import type { DiscordMessage } from "@/domain";
 
+/** Minimal payload validator used to advance cursors across malformed messages. */
 const MessageIdSchema = Schema.Struct({ id: Schema.String });
+/** Candidate validator for identifying malformed crossposts that must block a cursor. */
 const PotentialCrosspostSchema = Schema.Struct({
   flags: Schema.Number,
   webhook_id: Schema.optional(Schema.String),
 });
 
+/** Discriminated result separating usable messages from malformed or irrelevant rows. */
 type DecodedPolledMessage =
   | {
       readonly _tag: "Message";
@@ -32,6 +35,10 @@ type DecodedPolledMessage =
     }
   | { readonly _tag: "Skip"; readonly id?: string };
 
+/**
+ * Set a new subscription cursor to the latest valid message ID without
+ * delivering historical announcements from before initial setup.
+ */
 export const initializeCursor = (
   ports: PollingPorts,
   subscriptionId: string,
@@ -51,6 +58,7 @@ export const initializeCursor = (
     );
   });
 
+/** Decode one raw Discord payload and retain IDs for safe cursor progression. */
 const decodePolledMessage = (
   payload: UnparsedDiscordMessage
 ): DecodedPolledMessage => {
@@ -83,6 +91,10 @@ const decodePolledMessage = (
   return { _tag: "Skip", ...(id ? { id } : undefined) };
 };
 
+/**
+ * Read backward-paginated history newer than a cursor, fail closed on malformed
+ * candidate crossposts, and return messages plus the greatest observed ID.
+ */
 export const fetchHistory = (
   ports: PollingPorts,
   channelId: string,

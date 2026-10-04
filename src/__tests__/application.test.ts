@@ -7,6 +7,7 @@ import { BridgeInfrastructureError } from "@/bridge-infrastructure-error";
 import { DiscordApiError } from "@/discord-api-error";
 import type { Subscription } from "@/domain";
 
+/** Reusable subscription fixture for polling use-case tests. */
 const subscription: Subscription = {
   destinationChannelId: "target-channel",
   destinationGuildId: "target-guild",
@@ -14,6 +15,7 @@ const subscription: Subscription = {
   id: "sub",
 };
 
+/** Build a valid followed crosspost fixture with the requested snowflake ID. */
 const crosspost = (id: string) => ({
   attachments: [],
   author: { username: "news" },
@@ -32,6 +34,7 @@ const crosspost = (id: string) => ({
   webhook_id: "follower",
 });
 
+/** Observable fake polling state used to assert persistence and enqueue order. */
 interface FakePollingPorts {
   readonly ports: PollingPorts;
   readonly cursor: () => string | undefined;
@@ -39,6 +42,7 @@ interface FakePollingPorts {
   readonly beforeValues: () => readonly string[];
 }
 
+/** Construct polling ports whose repository and source record test activity. */
 const fakePorts = (
   pages: readonly (readonly unknown[])[],
   initialCursor: string | null = "100",

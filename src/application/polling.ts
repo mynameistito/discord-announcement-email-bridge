@@ -5,19 +5,23 @@ import type { BridgeInfrastructureError } from "@/bridge-infrastructure-error";
 import type { DiscordApiError } from "@/discord-api-error";
 import type { Announcement, FollowerWebhook, Subscription } from "@/domain";
 
-/** A Discord message payload held at the REST-to-domain decoding boundary. */
+/** Raw Discord data retained until application-level schema validation. */
 export interface UnparsedDiscordMessage {
   readonly raw: unknown;
 }
 
-/** Identifier for one durable queue delivery. */
+/** Stable identifiers needed to enqueue and later resolve one email delivery. */
 export interface DeliveryRef {
   readonly deliveryId: string;
   readonly announcementId: string;
 }
 
-/** Ports required by the polling use case. */
+/**
+ * Discord reads, durable repository operations, and queue enqueueing required
+ * by the polling use case; implementations keep infrastructure outside domain logic.
+ */
 export interface PollingPorts {
+  /** Discord REST reads and webhook metadata required to classify messages. */
   readonly source: {
     readonly fetchAfter: (
       channelId: string,
@@ -34,6 +38,7 @@ export interface PollingPorts {
       webhookId: string
     ) => Effect.Effect<FollowerWebhook | null, DiscordApiError>;
   };
+  /** Durable cursor, discovery, and pending-delivery repository operations. */
   readonly repository: {
     readonly enabledSubscriptions: () => Effect.Effect<
       readonly Subscription[],
@@ -58,23 +63,27 @@ export interface PollingPorts {
       deliveryId: string
     ) => Effect.Effect<void, BridgeInfrastructureError>;
   };
+  /** Publish a durable delivery identifier to the asynchronous queue. */
   readonly enqueue: (
     delivery: DeliveryRef
   ) => Effect.Effect<void, BridgeInfrastructureError>;
 }
 
-/** Effect service contract for announcement polling and durable discovery. */
+/** Effect service tag for dependency injection of polling ports. */
 export class PollingService extends Context.Service<
   PollingService,
   PollingPorts
 >()("discord-email/PollingService") {}
 
-/** Test or production implementation layer for polling. */
+/** Bind a concrete polling port implementation to the Effect service tag. */
 export const pollingServiceLayer = (
   ports: PollingPorts
 ): Layer.Layer<PollingService> => Layer.succeed(PollingService, ports);
 
-/** Poll all enabled subscriptions, persist discoveries/cursors, then enqueue identifiers. */
+/**
+ * Poll each enabled subscription, collecting per-subscription failures while
+ * allowing independent subscriptions to finish their discovery work.
+ */
 export const pollAll = Effect.gen(function* pollAll() {
   const ports = yield* PollingService;
   const subscriptions = yield* ports.repository.enabledSubscriptions();

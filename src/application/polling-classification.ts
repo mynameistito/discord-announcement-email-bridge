@@ -9,11 +9,16 @@ import type {
   Subscription,
 } from "@/domain";
 
+/** Determine whether the message has content worth sending in an email. */
 const hasReadableContent = (message: DiscordMessage): boolean =>
   Boolean(message.content) ||
   message.embeds.length > 0 ||
   message.attachments.length > 0;
 
+/**
+ * Verify follower webhooks and source constraints, cache each webhook lookup,
+ * and retain only announcements that contain renderable content.
+ */
 export const classifyMessages = (
   ports: PollingPorts,
   subscription: Subscription,

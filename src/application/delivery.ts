@@ -8,8 +8,10 @@ import { BridgeInfrastructureError } from "@/bridge-infrastructure-error";
 import { MessageSchema, renderHtml, renderText } from "@/domain";
 import type { Announcement } from "@/domain";
 
+/** Decode the JSON payload stored with each durable announcement row. */
 const StoredMessageSchema = Schema.fromJsonString(MessageSchema);
 
+/** Build a bounded, newline-free email subject from announcement text. */
 export const emailSubject = (announcement: Announcement): string => {
   const title = announcement.message.embeds.find((embed) => embed.title)?.title;
   const safeTitle = (title ?? announcement.message.content)
@@ -21,9 +23,14 @@ export const emailSubject = (announcement: Announcement): string => {
     : "[Discord] New announcement";
 };
 
+/** Sanitize sender display name and address before composing the From header. */
 const emailSender = (name: string, address: string): string =>
   `${name.trim().replaceAll(/[\r\n<>]+/gu, " ")} <${address.trim().replaceAll(/[\r\n<>]/gu, "")}>`;
 
+/**
+ * Load and validate a persisted announcement, send its email with a stable
+ * provider idempotency key, and mark it sent only if the claim token still owns it.
+ */
 export const deliver = (
   env: WorkerEnv,
   claimToken: string,
@@ -116,16 +123,20 @@ export const deliver = (
     });
   });
 
+/** Persisted delivery states that are valid when a delivery is loaded. */
 type DeliveryStatus = "pending" | "queued" | "sent" | "failed";
+/** D1 row shape required before rendering and sending a delivery. */
 interface DeliveryState {
   readonly id: string;
   readonly recipient: string;
   readonly status: DeliveryStatus;
   readonly idempotency_key: string;
 }
+/** Minimal D1 result proving a token-guarded sent update succeeded. */
 interface DeliveryIdRow {
   readonly id: string;
 }
+/** D1 announcement fields required to reconstruct the email domain object. */
 interface AnnouncementRow {
   readonly normalized_payload: string;
   readonly source_guild_id: string;

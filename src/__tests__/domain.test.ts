@@ -11,6 +11,7 @@ import {
 } from "@/domain";
 import type { DiscordMessage, Subscription } from "@/domain";
 
+/** Reusable destination configuration for domain classification scenarios. */
 const subscription: Subscription = {
   destinationChannelId: "channel-target",
   destinationGuildId: "guild-target",
@@ -18,6 +19,7 @@ const subscription: Subscription = {
   id: "sub-1",
 };
 
+/** Build a valid message fixture with a chosen ID and selective overrides. */
 const message = (
   id: string,
   overrides: Partial<DiscordMessage> = {}
@@ -51,6 +53,7 @@ const message = (
   ...overrides,
 });
 
+/** Follower webhook fixture matching the source IDs in the message helper. */
 const webhook = {
   id: "follower-hook",
   source_channel: { id: "source-channel" },

@@ -3,6 +3,10 @@ import { Effect } from "effect";
 import type { PollingPorts } from "@/application/polling";
 import type { Announcement, Subscription } from "@/domain";
 
+/**
+ * Persist a discovery batch and cursor atomically, then enqueue pending delivery
+ * IDs and mark each successfully enqueued row for durable retry recovery.
+ */
 export const persistAndEnqueue = (
   ports: PollingPorts,
   subscription: Subscription,

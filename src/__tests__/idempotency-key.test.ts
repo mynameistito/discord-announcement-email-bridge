@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { idempotencyKey } from "@/adapters/idempotency-key";
 import type { Announcement } from "@/domain";
 
+/** Stable announcement fixture used to compare recipient-scoped keys. */
 const announcement: Announcement = {
   followerWebhookId: "webhook",
   message: {

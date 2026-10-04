@@ -104,7 +104,7 @@ bunx alchemy deploy --stage $env:ALCHEMY_STAGE
 Never use a production profile or stage for preview builds. Only the `prod` stage receives the one-minute Cron; local and PR stages have no automatic polling. D1 migrations are applied by Alchemy. The dead-letter queue name is bound directly from the stage-specific Alchemy queue resource, so previews do not need a manually copied production queue name.
 
 - `GET /healthz` reports basic liveness and the stage/version.
-- `GET /admin/status` requires `Authorization: Bearer <ADMIN_TOKEN>` and reports cursor activity and delivery counts.
+- `GET /admin/status` requires `Authorization: Bearer <ADMIN_TOKEN>` and reports cursor activity and delivery counts. Supplying `?sourceMessageId=<id>` also reports counts for that announcement's delivery.
 - `POST /admin/poll` runs discovery immediately.
 - `POST /admin/replay` resets terminal failed deliveries to pending and queues them again. Review the failure cause before replaying; Resend idempotency keys are retained for 24 hours, while D1 remains the long-term deduplication source.
 
@@ -114,7 +114,7 @@ Logs contain event names, delivery IDs, and sanitized error messages; do not add
 
 The live E2E publishes a uniquely marked post to a dedicated Discord Announcement Channel, crossposts it, verifies that the receiver already follows that source, confirms the follower copy arrives, polls the bridge, and waits for `/admin/status` to record a successful Resend delivery. It leaves the Discord messages in place as an audit trail and sends a real email to the configured test recipient. Never use production channels, recipient, or Resend credentials.
 
-The source and receiver channels must belong to `DISCORD_GUILD_ID`. The preview bot must be installed in that guild, have `VIEW_CHANNEL`, `SEND_MESSAGES`, and `MANAGE_MESSAGES` in the source Announcement Channel, and have `VIEW_CHANNEL`, `READ_MESSAGE_HISTORY`, and `MANAGE_WEBHOOKS` in the receiver channel. The test reads the existing `DISCORD_PREVIEW_BOT_TOKEN`, `RESEND_PREVIEW_API_KEY`, `ADMIN_PREVIEW_TOKEN`, `DISCORD_GUILD_ID`, `EMAIL_TO`, `EMAIL_FROM_NAME`, and `EMAIL_FROM_EMAIL` fields, plus `DISCORD_E2E_ANNONCEMENT_CHANNEL_ID` and `DISCORD_E2E_RECIEVER_CHANNEL_ID`, from the `discord-annoucement-email-bridge` item in the `github-actions` 1Password vault. It also loads `CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET` for protected Worker URLs. Set `EMAIL_TO` to the test mailbox. The GitHub Action uses the existing `CLOUDFLARE_PREVIEW_API_TOKEN` and `CLOUDFLARE_PREVIEW_ACCOUNT_ID`; `OP_SERVICE_ACCOUNT_TOKEN` is a repository secret.
+The source and receiver channels must belong to `DISCORD_GUILD_ID`. The preview bot must be installed in that guild, have `VIEW_CHANNEL`, `SEND_MESSAGES`, and `MANAGE_MESSAGES` in the source Announcement Channel, and have `VIEW_CHANNEL`, `READ_MESSAGE_HISTORY`, and `MANAGE_WEBHOOKS` in the receiver channel. The test reads the existing `DISCORD_PREVIEW_BOT_TOKEN`, `RESEND_PREVIEW_API_KEY`, `ADMIN_PREVIEW_TOKEN`, `DISCORD_GUILD_ID`, `EMAIL_TO`, `EMAIL_FROM_NAME`, and `EMAIL_FROM_EMAIL` fields, plus `DISCORD_E2E_ANNOUNCEMENT_CHANNEL_ID` and `DISCORD_E2E_RECEIVER_CHANNEL_ID`, from the `discord-announcement-email-bridge` item in the `github-actions` 1Password vault. It also loads `CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET` for protected Worker URLs. Set `EMAIL_TO` to the test mailbox. Add `CLOUDFLARE_PREVIEW_API_TOKEN` and `CLOUDFLARE_PREVIEW_ACCOUNT_ID` as new fields on this vault item; use a preview-scoped token and the preview account ID, not the shared production deployment credentials. `OP_SERVICE_ACCOUNT_TOKEN` is a repository secret.
 
 For a local run, install and sign in to the 1Password CLI, then materialize the ignored `.env.e2e` from the checked-in field-reference template and run the test:
 
@@ -125,6 +125,6 @@ bun --env-file=.env.e2e run e2e
 
 This starts `alchemy dev` in the `e2e-local` stage, runs the live test against its local Worker, stops the dev process, and returns to the shell. To select an Alchemy profile for local dev, pass `--profile <name>` (for example, `bun --env-file=.env.e2e run e2e --profile preview`). It does not deploy or destroy a remote stage.
 
-For GitHub Actions, manually run **Actions → Discord E2E → Run workflow**. It creates a unique non-production Alchemy stage, runs the same test against it, and destroys only that stage afterward. Regular CI and pull requests never receive E2E credentials or publish messages.
+For GitHub Actions, manually run **Actions → Discord E2E → Run workflow**. It creates a unique non-production Alchemy stage, runs the same test against it, and destroys only that stage afterward. The E2E Worker URL currently uses the `mynameistito.workers.dev` account subdomain; update `.github/workflows/e2e.yml` if the Workers account or configured subdomain changes. Regular CI and pull requests never receive E2E credentials or publish messages.
 
 See [ADR 0001](docs/adr/0001-polling-and-durable-delivery.md) for the polling, classification, and delivery design.

@@ -7,6 +7,11 @@ export const DiscordErrorPayloadSchema = Schema.Struct({
 
 export type DiscordErrorPayload = typeof DiscordErrorPayloadSchema.Type;
 
+interface SafeRoute {
+  readonly name: string;
+  readonly requiredPermissions?: string;
+}
+
 /** Describe a Discord REST failure without exposing resource IDs or response bodies. */
 export function describeDiscordFailure(
   path: string,
@@ -16,20 +21,32 @@ export function describeDiscordFailure(
   const route = safeRoute(path);
   const message = discordErrorMessage(payload?.code);
   const messageDetail = message ? `: ${message}` : "";
-  const detail = payload
-    ? ` (Discord error ${payload.code}${messageDetail})`
+  const errorDetail = payload
+    ? `Discord error ${payload.code}${messageDetail}`
     : "";
-  return `Discord REST GET ${route} returned ${status}${detail}`;
+  const permissionDetail =
+    status === 403 && route.requiredPermissions
+      ? `required bot permissions: ${route.requiredPermissions}`
+      : "";
+  const details = [errorDetail, permissionDetail].filter(Boolean).join("; ");
+  const detail = details ? ` (${details})` : "";
+  return `Discord REST GET ${route.name} returned ${status}${detail}`;
 }
 
-function safeRoute(path: string): string {
+function safeRoute(path: string): SafeRoute {
   if (/^\/channels\/[^/]+\/messages(?:\?|$)/u.test(path)) {
-    return "/channels/{channel_id}/messages";
+    return {
+      name: "/channels/{channel_id}/messages",
+      requiredPermissions: "VIEW_CHANNEL, READ_MESSAGE_HISTORY",
+    };
   }
   if (/^\/webhooks\/[^/]+(?:\/[^/?]+)?(?:\?|$)/u.test(path)) {
-    return "/webhooks/{webhook_id}";
+    return {
+      name: "/webhooks/{webhook_id}",
+      requiredPermissions: "MANAGE_WEBHOOKS in the destination channel",
+    };
   }
-  return "an endpoint";
+  return { name: "an endpoint" };
 }
 
 function discordErrorMessage(code: number | undefined): string | undefined {

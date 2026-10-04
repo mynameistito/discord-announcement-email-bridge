@@ -10,7 +10,7 @@ describe("Discord REST failure diagnostics", () => {
         message: "Missing Access",
       })
     ).toBe(
-      "Discord REST GET /channels/{channel_id}/messages returned 403 (Discord error 50001: Missing Access)"
+      "Discord REST GET /channels/{channel_id}/messages returned 403 (Discord error 50001: Missing Access; required bot permissions: VIEW_CHANNEL, READ_MESSAGE_HISTORY)"
     );
   });
 
@@ -21,7 +21,7 @@ describe("Discord REST failure diagnostics", () => {
         message: "Missing Permissions",
       })
     ).toBe(
-      "Discord REST GET /webhooks/{webhook_id} returned 403 (Discord error 50013: Missing Permissions)"
+      "Discord REST GET /webhooks/{webhook_id} returned 403 (Discord error 50013: Missing Permissions; required bot permissions: MANAGE_WEBHOOKS in the destination channel)"
     );
   });
 
@@ -32,7 +32,7 @@ describe("Discord REST failure diagnostics", () => {
         message: "private content or token=secret",
       })
     ).toBe(
-      "Discord REST GET /webhooks/{webhook_id} returned 403 (Discord error 123456)"
+      "Discord REST GET /webhooks/{webhook_id} returned 403 (Discord error 123456; required bot permissions: MANAGE_WEBHOOKS in the destination channel)"
     );
   });
 
@@ -40,5 +40,13 @@ describe("Discord REST failure diagnostics", () => {
     expect(
       describeDiscordFailure("/private/123456?token=secret", 403, undefined)
     ).toBe("Discord REST GET an endpoint returned 403");
+  });
+
+  it("does not suggest permission changes for other HTTP failures", () => {
+    expect(
+      describeDiscordFailure("/channels/123456/messages", 500, undefined)
+    ).toBe(
+      "Discord REST GET /channels/{channel_id}/messages returned 500"
+    );
   });
 });

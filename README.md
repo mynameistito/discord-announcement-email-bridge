@@ -109,8 +109,8 @@ The production `prod` stage polls every minute and uses the production `RESEND_A
    - In **Cloudflare Zero Trust → Access → Service Auth → Service Tokens**, create a token and copy its Client ID and Client Secret into a password manager. The secret is shown only once.
    - In **Access → Applications**, open the application protecting the Worker hostname and add a **Service Auth** policy that includes this service token. Keep the existing interactive policy; do not make the Worker public or add a Bypass policy.
    - In the `discord-announcement-email-bridge` item in the `github-actions` 1Password vault, add `CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET` fields for this local test client. Keep the service token and `ADMIN_TOKEN` in 1Password; neither is a Worker code change, and the Access fields are not deployment bindings.
-3. Before publishing the test, call `POST /admin/poll` once to establish the initial cursor. The first poll seeds the cursor at the newest observed message and intentionally does not email historical crossposts. Run this baseline when there are no new messages you expect to deliver.
-4. Publish a new test announcement in the followed source channel. Confirm its crosspost appears in the configured destination channel, then call `POST /admin/poll` again or wait up to one minute for the Cron Trigger.
+3. Check `GET /admin/status` before testing. Only a brand-new subscription with no saved cursor gets a baseline on its first poll; that poll seeds at the newest message and skips history. Production may already have an initialized cursor. On an existing subscription, a poll processes all unseen valid crossposts and can queue real email, so it is not a harmless baseline.
+4. Publish a new test announcement in the followed source channel. Confirm its crosspost appears in the configured destination channel, then wait up to one minute for the Cron Trigger. If you manually call `POST /admin/poll`, do so only after the test crosspost appears and expect it to process every unseen valid crosspost, not only the test.
 5. Check the test mailbox and Resend delivery logs. `GET /admin/status` reports `lastPoll`, `pendingDeliveries`, and `failedDeliveries`; queue delivery is asynchronous, so allow time for pending deliveries to finish. A normal message in the destination channel is not a valid test.
 
 Install and sign in to the 1Password CLI (`op`) first. Then load the values from the existing 1Password item into this PowerShell session. `ADMIN_TOKEN` is already a deployment field; add the two `CF_ACCESS_*` fields as described above. The commands print no secret values:
@@ -127,10 +127,15 @@ $headers["CF-Access-Client-Id"] = $env:CF_ACCESS_CLIENT_ID
 $headers["CF-Access-Client-Secret"] = $env:CF_ACCESS_CLIENT_SECRET
 
 Invoke-RestMethod -Method Get -Uri "$url/admin/status" -Headers $headers
+```
+
+For a brand-new subscription only, run this once before publishing to seed the cursor, and only when there are no unseen announcements you expect to deliver. For an existing production subscription, skip the baseline poll. After the test crosspost appears, you can force a poll with:
+
+```powershell
 Invoke-RestMethod -Method Post -Uri "$url/admin/poll" -Headers $headers
 ```
 
-Run the `POST /admin/poll` command once before publishing to establish the baseline, then run it again after the test crosspost appears. You can also skip the manual polls and wait for production's next scheduled poll.
+Or skip the manual poll and wait for production's next scheduled poll.
 
 When finished, remove the credentials from the current shell:
 

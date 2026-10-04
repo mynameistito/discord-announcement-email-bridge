@@ -29,6 +29,16 @@ The bot must be able to read the destination channel and look up its Channel Fol
 5. Enable Discord **Developer Mode** and copy the destination server and channel IDs into `DISCORD_GUILD_ID` and `DISCORD_TARGET_CHANNEL_ID`. These IDs must describe the guild and channel where the followed copies arrive.
 6. In the source server's Announcement Channel, use **Follow** and select the destination server and channel configured above. The bot only processes verified Channel Follower crossposts that appear in this destination channel; an ordinary message posted there is ignored.
 
+## Troubleshoot Discord polling failures
+
+Cron failures identify the Discord REST endpoint without logging channel or webhook IDs. A 403 remains a polling failure and does not advance the cursor. A webhook lookup returning 404 is different: the message is treated as missing follower metadata, skipped, and the cursor may advance.
+
+- `GET /channels/{channel_id}/messages` reads the configured destination channel. Check that the bot is installed in the destination guild and has `VIEW_CHANNEL` and `READ_MESSAGE_HISTORY` for that channel, including channel-specific permission overwrites. Confirm the configured destination guild and channel IDs refer to the channel receiving the followed posts.
+- `GET /webhooks/{webhook_id}` verifies Channel Follower metadata. This strict verification call requires `MANAGE_WEBHOOKS` in the watched destination channel; the service intentionally does not fall back to trusting a message's `webhook_id` alone.
+- Discord error `50001` means `Missing Access` and commonly indicates the bot cannot access the target resource. Error `50013` means `Missing Permissions`; check the permissions required by the reported endpoint above. An HTTP 403 by itself does not establish which permission or configuration is wrong.
+
+The diagnostic contains only the known numeric Discord error code and an allowlisted standard message. Do not include bot tokens, response bodies, message contents, or resource IDs when sharing logs.
+
 ## Configure
 
 Set these values in a local `.env` for Alchemy (never commit it) or configure them as protected deployment secrets/environment values:

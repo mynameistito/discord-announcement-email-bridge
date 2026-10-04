@@ -172,6 +172,7 @@ if ($LASTEXITCODE -ne 0) {
 "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "DISCORD_BOT_TOKEN", "DISCORD_GUILD_ID", "DISCORD_TARGET_CHANNEL_ID", "EMAIL_TO", "RESEND_API_KEY", "EMAIL_FROM_NAME", "EMAIL_FROM_EMAIL", "ADMIN_TOKEN", "CF_ACCESS_CLIENT_ID", "CF_ACCESS_CLIENT_SECRET", "ALCHEMY_STAGE", "STAGE" | ForEach-Object {
   Remove-Item "Env:$_" -ErrorAction SilentlyContinue
 }
+Remove-Variable headers -ErrorAction SilentlyContinue
 ```
 
 PR CI has no credentials and does not run the poll or send email. It tests the secret-free `/healthz` handler and builds the Worker artifact. The pinned `mynameistito/alchemy-deploy` action does not expose its resolved preview URL as an output; its configured URL pattern is only used internally for deployment reporting. Therefore CI does not claim to smoke-test the deployed PR runtime. Adding that safely requires a stable URL output or another trusted way to resolve the URL from the deployment action.

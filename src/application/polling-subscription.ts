@@ -1,0 +1,46 @@
+import { Effect } from "effect";
+
+import type { PollingPorts } from "@/application/polling";
+import { classifyMessages } from "@/application/polling-classification";
+import { persistAndEnqueue } from "@/application/polling-deliveries";
+import { fetchHistory, initializeCursor } from "@/application/polling-history";
+import type { Subscription } from "@/domain";
+
+/**
+ * Poll one subscription from its cursor, initializing on first use or
+ * classifying and durably enqueueing newly discovered announcements.
+ * @param ports - Repository and Discord operations for polling.
+ * @param subscription - Subscription to poll.
+ * @returns An Effect that initializes or advances the subscription's discovery state.
+ */
+export const pollSubscription = (
+  ports: PollingPorts,
+  subscription: Subscription
+) =>
+  Effect.gen(function* pollSubscriptionEffect() {
+    const cursor = yield* ports.repository.cursor(subscription.id);
+    if (cursor === undefined) {
+      yield* initializeCursor(
+        ports,
+        subscription.id,
+        subscription.destinationChannelId
+      );
+      return;
+    }
+    const history = yield* fetchHistory(
+      ports,
+      subscription.destinationChannelId,
+      cursor
+    );
+    const announcements = yield* classifyMessages(
+      ports,
+      subscription,
+      history.messages
+    );
+    yield* persistAndEnqueue(
+      ports,
+      subscription,
+      announcements,
+      history.highWater
+    );
+  });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { describeDiscordFailure } from "../discord-diagnostics";
+import { describeDiscordFailure } from "@/discord-diagnostics";
 
 describe("Discord REST failure diagnostics", () => {
   it("identifies message-history access failures without logging the channel ID", () => {
@@ -37,14 +37,14 @@ describe("Discord REST failure diagnostics", () => {
   });
 
   it("does not expose unrecognized paths or missing error payloads", () => {
-    expect(
-      describeDiscordFailure("/private/123456?token=secret", 403, undefined)
-    ).toBe("Discord REST GET an endpoint returned 403");
+    expect(describeDiscordFailure("/private/123456?token=secret", 403)).toBe(
+      "Discord REST GET an endpoint returned 403"
+    );
   });
 
   it("does not suggest permission changes for other HTTP failures", () => {
-    expect(
-      describeDiscordFailure("/channels/123456/messages", 500, undefined)
-    ).toBe("Discord REST GET /channels/{channel_id}/messages returned 500");
+    expect(describeDiscordFailure("/channels/123456/messages", 500)).toBe(
+      "Discord REST GET /channels/{channel_id}/messages returned 500"
+    );
   });
 });

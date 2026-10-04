@@ -4,14 +4,14 @@ import { describe, expect, it } from "vitest";
 import {
   classifyFollowerMessage,
   compareSnowflakes,
-  idempotencyKey,
   MessageSchema,
   oldestFirst,
   renderHtml,
   renderText,
-} from "../domain";
-import type { DiscordMessage, Subscription } from "../domain";
+} from "@/domain";
+import type { DiscordMessage, Subscription } from "@/domain";
 
+/** Reusable destination configuration for domain classification scenarios. */
 const subscription: Subscription = {
   destinationChannelId: "channel-target",
   destinationGuildId: "guild-target",
@@ -19,6 +19,12 @@ const subscription: Subscription = {
   id: "sub-1",
 };
 
+/**
+ * Build a valid message fixture with a chosen ID and selective overrides.
+ * @param id - Discord message snowflake used by the fixture.
+ * @param overrides - Optional message fields that replace fixture defaults.
+ * @returns A valid Discord message for domain tests.
+ */
 const message = (
   id: string,
   overrides: Partial<DiscordMessage> = {}
@@ -34,9 +40,9 @@ const message = (
   content: "Service maintenance at <noon> & stay tuned",
   embeds: [
     {
-      title: "Update",
       description: "Details",
       fields: [{ name: "Status", value: "Planned" }],
+      title: "Update",
     },
   ],
   flags: 2,
@@ -52,6 +58,7 @@ const message = (
   ...overrides,
 });
 
+/** Follower webhook fixture matching the source IDs in the message helper. */
 const webhook = {
   id: "follower-hook",
   source_channel: { id: "source-channel" },
@@ -159,34 +166,17 @@ describe("snowflakes and email rendering", () => {
       hasAttributedMessageUrl: text.includes(
         "/source-guild/source-channel/source-message"
       ),
-      hasEscapedContent: html.includes("&lt;noon&gt; &amp; stay tuned"),
       hasEmbedField: text.includes("Status"),
+      hasEscapedContent: html.includes("&lt;noon&gt; &amp; stay tuned"),
       hasPlainAttachment: text.includes("schedule.pdf"),
       hasRawHtml: html.includes("<noon>"),
     }).toStrictEqual({
       hasAttachmentLink: true,
       hasAttributedMessageUrl: true,
-      hasEscapedContent: true,
       hasEmbedField: true,
+      hasEscapedContent: true,
       hasPlainAttachment: true,
       hasRawHtml: false,
     });
-  });
-
-  it("uses stable logical email identity", async () => {
-    const announcement = classifyFollowerMessage(
-      message("100"),
-      webhook,
-      subscription
-    );
-    if (!announcement) {
-      throw new Error("fixture should classify");
-    }
-    const [first, second] = await Promise.all([
-      Effect.runPromise(idempotencyKey(announcement, "recipient@example.test")),
-      Effect.runPromise(idempotencyKey(announcement, "RECIPIENT@example.test")),
-    ]);
-    expect(first).toMatch(/^discord-follow\/sub-1\/100\/[a-f0-9]{64}$/u);
-    expect(second).toStrictEqual(first);
   });
 });

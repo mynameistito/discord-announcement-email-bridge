@@ -1,12 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import type { WorkerEnv } from "../../alchemy.run";
-import worker from "../worker";
+import type { WorkerEnv } from "@/alchemy.run";
+import worker from "@/worker";
 
 describe("Worker health endpoint", () => {
   it("returns a secret-free stage and version response", async () => {
-    // Fake secrets make this test fail if /healthz exposes secret bindings.
-    // SAFETY: /healthz reads only BUILD_VERSION and STAGE; the other values are test placeholders.
+    // SAFETY: /healthz reads only BUILD_VERSION and STAGE; secret values are placeholders.
     const env = {
       ADMIN_TOKEN: "test-admin-token",
       BUILD_VERSION: "test-sha",
@@ -15,7 +14,7 @@ describe("Worker health endpoint", () => {
       STAGE: "pr-12",
     } as WorkerEnv;
     const response = await worker.fetch(
-      new Request("https://worker.example/healthz"),
+      new Request("https://example.test/healthz"),
       env
     );
 

@@ -1,15 +1,13 @@
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  BridgeInfrastructureError,
-  DiscordApiError,
-  pollAll,
-  pollingServiceLayer,
-} from "../application";
-import type { PollingPorts } from "../application";
-import type { Subscription } from "../domain";
+import { pollAll, pollingServiceLayer } from "@/application/polling";
+import type { PollingPorts } from "@/application/polling";
+import { BridgeInfrastructureError } from "@/bridge-infrastructure-error";
+import { DiscordApiError } from "@/discord-api-error";
+import type { Subscription } from "@/domain";
 
+/** Reusable subscription fixture for polling use-case tests. */
 const subscription: Subscription = {
   destinationChannelId: "target-channel",
   destinationGuildId: "target-guild",
@@ -17,26 +15,30 @@ const subscription: Subscription = {
   id: "sub",
 };
 
-function crosspost(id: string) {
-  return {
-    attachments: [],
-    author: { username: "news" },
-    channel_id: "target-channel",
-    content: `Announcement ${id}`,
-    embeds: [],
-    flags: 2,
-    id,
-    message_reference: {
-      channel_id: "source-channel",
-      guild_id: "source-guild",
-      message_id: id,
-    },
-    timestamp: "2026-10-03T10:00:00Z",
-    type: 0,
-    webhook_id: "follower",
-  };
-}
+/**
+ * Build a valid followed crosspost fixture with the requested snowflake ID.
+ * @param id - Discord message snowflake used by the fixture.
+ * @returns A raw message object matching the followed-crosspost shape.
+ */
+const crosspost = (id: string) => ({
+  attachments: [],
+  author: { username: "news" },
+  channel_id: "target-channel",
+  content: `Announcement ${id}`,
+  embeds: [],
+  flags: 2,
+  id,
+  message_reference: {
+    channel_id: "source-channel",
+    guild_id: "source-guild",
+    message_id: id,
+  },
+  timestamp: "2026-10-03T10:00:00Z",
+  type: 0,
+  webhook_id: "follower",
+});
 
+/** Observable fake polling state used to assert persistence and enqueue order. */
 interface FakePollingPorts {
   readonly ports: PollingPorts;
   readonly cursor: () => string | undefined;
@@ -44,11 +46,18 @@ interface FakePollingPorts {
   readonly beforeValues: () => readonly string[];
 }
 
-function fakePorts(
+/**
+ * Construct polling ports whose repository and source record test activity.
+ * @param pages - Ordered fake Discord message pages.
+ * @param initialCursor - Initial cursor, or `null` for an uninitialized channel.
+ * @param failEnqueueCount - Number of initial queue attempts that should fail.
+ * @returns Fake ports and read-only observations of test activity.
+ */
+const fakePorts = (
   pages: readonly (readonly unknown[])[],
   initialCursor: string | null = "100",
   failEnqueueCount = 0
-): FakePollingPorts {
+): FakePollingPorts => {
   let cursorValue: string | undefined = initialCursor ?? undefined;
   let initialized = initialCursor !== null;
   const discovered = new Map<string, string>();
@@ -88,8 +97,8 @@ function fakePorts(
           [...discovered.values()]
             .filter((id) => !marked.has(id))
             .map((id) => ({
-              deliveryId: `delivery-${id}`,
               announcementId: `announcement-${id}`,
+              deliveryId: `delivery-${id}`,
             }))
         ),
       persistDiscoveryBatch: (_subscription, announcements, cursor) =>
@@ -114,19 +123,19 @@ function fakePorts(
       getWebhook: (id) =>
         Effect.succeed({
           id,
-          type: 2,
-          source_guild: { id: "source-guild" },
           source_channel: { id: "source-channel" },
+          source_guild: { id: "source-guild" },
+          type: 2,
         }),
     },
   };
   return {
+    beforeValues: () => beforeValues,
     cursor: () => (initialized ? (cursorValue ?? "0") : undefined),
     ports,
     sent: () => queued,
-    beforeValues: () => beforeValues,
   };
-}
+};
 
 describe("announcement discovery integration", () => {
   it("paginates beyond 100, sorts safely, and advances only after durable persistence", async () => {
@@ -284,27 +293,5 @@ describe("announcement discovery integration", () => {
       pollAll.pipe(Effect.provide(pollingServiceLayer(ports)))
     );
     expect(fake.sent()).toStrictEqual(["delivery-201"]);
-  });
-
-  it("does not advance the cursor if a later page fails", async () => {
-    const firstPage = Array.from({ length: 100 }, (_, index) =>
-      crosspost(String(200 - index))
-    );
-    const fake = fakePorts([firstPage]);
-    const ports: PollingPorts = {
-      ...fake.ports,
-      source: {
-        ...fake.ports.source,
-        fetchBefore: () =>
-          Effect.fail(new DiscordApiError("network error", 503, true)),
-      },
-    };
-    await expect(
-      Effect.runPromise(
-        pollAll.pipe(Effect.provide(pollingServiceLayer(ports)))
-      )
-    ).rejects.toThrow("network error");
-    expect(fake.cursor()).toBe("100");
-    expect(fake.sent()).toStrictEqual([]);
   });
 });

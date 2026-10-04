@@ -14,13 +14,6 @@ const activeClaimSql =
   "SELECT id FROM deliveries WHERE id = ? AND announcement_id = ? AND status IN ('pending', 'queued') AND claim_token IS NOT NULL AND claim_expires_at > CURRENT_TIMESTAMP";
 
 /**
- * Match a delivery against the production claim statement's eligibility conditions.
- * @param row - Candidate delivery row.
- * @param id - Delivery ID bound to the claim statement.
- * @param announcementId - Announcement ID bound to the claim statement.
- * @returns Whether the candidate satisfies the statement's predicates.
- */
-/**
  * Check the statuses accepted by the production claim statement.
  * @param row - Candidate delivery row.
  * @returns Whether the status is eligible for a claim.
@@ -74,16 +67,30 @@ const hasActiveClaim = (
 interface FakeDelivery {
   readonly id: string;
   readonly announcementId: string;
-  readonly subscriptionId: string;
+  readonly createdAt: number;
   claimToken: string | null;
   expired: boolean;
   status: "pending" | "queued";
 }
 
+/** Subscription state used to verify recovery is not restricted to enabled rows. */
+interface FakeSubscription {
+  readonly enabled: boolean;
+  readonly id: string;
+}
+
+/** Announcement rows joined by the production pending-deliveries query. */
+interface FakeAnnouncement {
+  readonly id: string;
+  readonly subscriptionId: string;
+}
+
 /** Test-only bindings for exercising the real D1 adapter entry points. */
 interface D1Fixture {
+  readonly announcements: FakeAnnouncement[];
   readonly env: WorkerEnv;
   readonly deliveries: FakeDelivery[];
+  readonly subscriptions: FakeSubscription[];
 }
 
 /**
@@ -116,26 +123,58 @@ const projectRow = <T>(row: Record<string, string | null>): T =>
   ({ ...row }) as T;
 
 /**
+ * Execute the pending-query projection against fixture records.
+ * @param deliveries - Candidate delivery rows.
+ * @param announcements - Announcement rows used by the SQL inner join.
+ * @returns Pending delivery projections ordered and capped as the SQL specifies.
+ */
+const pendingRows = <T>(
+  deliveries: readonly FakeDelivery[],
+  announcements: readonly FakeAnnouncement[]
+): T[] =>
+  deliveries
+    .filter(({ status }) => status === "pending")
+    .filter(({ announcementId }) =>
+      announcements.some(({ id }) => id === announcementId)
+    )
+    .toSorted((left, right) => left.createdAt - right.createdAt)
+    .slice(0, 500)
+    .map(({ announcementId, id }) =>
+      projectRow<T>({
+        announcement_id: announcementId,
+        delivery_id: id,
+      })
+    );
+
+/**
  * Create seeded delivery state and D1 bindings that recognize production SQL.
  * @returns A complete worker environment and its mutable seeded delivery state.
  */
 const makeD1Fixture = (): D1Fixture => {
+  const subscriptions: FakeSubscription[] = [
+    { enabled: false, id: "disabled-subscription" },
+    { enabled: true, id: "active-subscription" },
+  ];
+  const announcements: FakeAnnouncement[] = [
+    { id: "old-announcement", subscriptionId: "disabled-subscription" },
+    { id: "claim-announcement", subscriptionId: "active-subscription" },
+  ];
   const deliveries: FakeDelivery[] = [
     {
       announcementId: "old-announcement",
       claimToken: "expired-token",
+      createdAt: 1,
       expired: true,
       id: "old-delivery",
       status: "queued",
-      subscriptionId: "disabled-subscription",
     },
     {
       announcementId: "claim-announcement",
       claimToken: null,
+      createdAt: 2,
       expired: false,
       id: "claim-delivery",
       status: "queued",
-      subscriptionId: "active-subscription",
     },
   ];
 
@@ -147,14 +186,7 @@ const makeD1Fixture = (): D1Fixture => {
           if (query !== pendingDeliveriesSql) {
             throw new Error(`Unexpected D1 query: ${query}`);
           }
-          const results = deliveries
-            .filter(({ status }) => status === "pending")
-            .map(({ announcementId, id }) =>
-              projectRow<T>({
-                announcement_id: announcementId,
-                delivery_id: id,
-              })
-            );
+          const results = pendingRows<T>(deliveries, announcements);
           return Promise.resolve(d1Result(results));
         },
         bind(...parameters: string[]) {
@@ -244,7 +276,7 @@ const makeD1Fixture = (): D1Fixture => {
     STAGE: "test",
   };
 
-  return { deliveries, env };
+  return { announcements, deliveries, env, subscriptions };
 };
 
 describe("D1 delivery repository", () => {
@@ -255,10 +287,20 @@ describe("D1 delivery repository", () => {
   });
 
   afterEach(() => {
+    fixture.announcements.length = 0;
     fixture.deliveries.length = 0;
+    fixture.subscriptions.length = 0;
   });
 
   it("recovers expired deliveries from disabled subscriptions", async () => {
+    expect(fixture.subscriptions).toContainEqual({
+      enabled: false,
+      id: "disabled-subscription",
+    });
+    expect(fixture.announcements).toContainEqual({
+      id: "old-announcement",
+      subscriptionId: "disabled-subscription",
+    });
     const pending = await Effect.runPromise(
       makeRepository(fixture.env).pendingDeliveries()
     );
@@ -272,6 +314,45 @@ describe("D1 delivery repository", () => {
     expect(fixture.deliveries[0]).toMatchObject({
       claimToken: null,
       status: "pending",
+    });
+  });
+
+  it("joins announcements and returns the oldest 500 pending deliveries", async () => {
+    fixture.announcements.length = 0;
+    fixture.deliveries.length = 0;
+    for (let index = 0; index < 501; index += 1) {
+      const id = `announcement-${String(index).padStart(3, "0")}`;
+      fixture.announcements.push({ id, subscriptionId: "active-subscription" });
+      fixture.deliveries.push({
+        announcementId: id,
+        claimToken: null,
+        createdAt: index,
+        expired: false,
+        id: `delivery-${String(index).padStart(3, "0")}`,
+        status: "pending",
+      });
+    }
+    fixture.deliveries.push({
+      announcementId: "missing-announcement",
+      claimToken: null,
+      createdAt: -1,
+      expired: false,
+      id: "orphaned-delivery",
+      status: "pending",
+    });
+
+    const pending = await Effect.runPromise(
+      makeRepository(fixture.env).pendingDeliveries()
+    );
+
+    expect(pending).toHaveLength(500);
+    expect(pending[0]).toStrictEqual({
+      announcementId: "announcement-000",
+      deliveryId: "delivery-000",
+    });
+    expect(pending.at(-1)).toStrictEqual({
+      announcementId: "announcement-499",
+      deliveryId: "delivery-499",
     });
   });
 

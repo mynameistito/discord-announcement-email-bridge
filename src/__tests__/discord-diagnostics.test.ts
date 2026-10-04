@@ -36,7 +36,7 @@ describe("Discord REST failure diagnostics", () => {
     );
   });
 
-  it("does not expose unrecognized paths or malformed response bodies", () => {
+  it("does not expose unrecognized paths or missing error payloads", () => {
     expect(
       describeDiscordFailure("/private/123456?token=secret", 403, undefined)
     ).toBe("Discord REST GET an endpoint returned 403");

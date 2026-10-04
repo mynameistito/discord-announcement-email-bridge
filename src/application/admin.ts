@@ -162,10 +162,9 @@ export const seedSubscription = (
 ) => Effect.runPromiseExit(ensureSubscription(env, subscription));
 
 /**
- * Produce a bounded error string without serializing secrets or arbitrary
- * objects from failed Effects.
+ * Render a bounded message from a failure cause, preferring recognized errors.
  * @param cause - Failure cause returned by an Effect.
- * @returns A sanitized diagnostic string limited to 300 characters.
+ * @returns A diagnostic string limited to 300 characters.
  */
 export const safeError = (cause: Cause.Cause<unknown>): string => {
   const failure = Cause.findErrorOption(cause);

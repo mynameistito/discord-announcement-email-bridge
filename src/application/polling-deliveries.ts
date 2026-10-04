@@ -4,8 +4,8 @@ import type { PollingPorts } from "@/application/polling";
 import type { Announcement, Subscription } from "@/domain";
 
 /**
- * Persist a discovery batch and cursor atomically, then enqueue pending delivery
- * IDs and mark each successfully enqueued row for durable retry recovery.
+ * Persist a discovery batch and cursor in bounded D1 batches, then enqueue
+ * pending delivery IDs and mark each successful enqueue for retry recovery.
  * @param ports - Repository and queue operations for this poll.
  * @param subscription - Subscription being polled.
  * @param announcements - Newly verified announcements to persist.

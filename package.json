@@ -20,7 +20,7 @@
   },
   "type": "module",
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit --project scripts/tsconfig.json",
     "test": "vitest run",
     "e2e": "bun scripts/e2e.ts",
     "knip": "knip",
@@ -42,6 +42,7 @@
     "@cloudflare/workers-types": "5.20261004.1",
     "@effect/platform-bun": "4.0.0",
     "@effect/platform-node": "4.0.0",
+    "@types/node": "^26.6.4",
     "@typescript/native": "npm:typescript@^7.0.2",
     "eslint-plugin-github": "6.1.2",
     "eslint-plugin-jsdoc": "^65.1.0",

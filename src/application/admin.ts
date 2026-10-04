@@ -162,21 +162,19 @@ export const seedSubscription = (
 ) => Effect.runPromiseExit(ensureSubscription(env, subscription));
 
 /**
- * Render a bounded message from a failure cause, preferring recognized errors.
+ * Render a bounded infrastructure message or a generic fallback for other causes.
  * @param cause - Failure cause returned by an Effect.
  * @returns A diagnostic string limited to 300 characters.
  */
 export const safeError = (cause: Cause.Cause<unknown>): string => {
   const failure = Cause.findErrorOption(cause);
-  if (failure._tag === "Some") {
-    if (failure.value instanceof BridgeInfrastructureError) {
-      return failure.value.message.slice(0, 300);
-    }
-    if (failure.value instanceof Error) {
-      return failure.value.message.slice(0, 300);
-    }
+  if (
+    failure._tag === "Some" &&
+    failure.value instanceof BridgeInfrastructureError
+  ) {
+    return failure.value.message.slice(0, 300);
   }
-  return Cause.pretty(cause).slice(0, 300);
+  return "Unexpected failure";
 };
 
 /** D1 aggregate row used by the admin delivery status endpoint. */

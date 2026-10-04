@@ -11,7 +11,7 @@ export interface UnparsedDiscordMessage {
 }
 
 /** Stable identifiers needed to enqueue and later resolve one email delivery. */
-export interface DeliveryRef {
+interface DeliveryRef {
   readonly deliveryId: string;
   readonly announcementId: string;
 }

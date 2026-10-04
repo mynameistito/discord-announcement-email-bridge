@@ -145,4 +145,3 @@ export const makeDiscordSource = (env: WorkerEnv) => ({
 });
 
 /** Type of the Discord polling adapter returned by {@link makeDiscordSource}. */
-export type DiscordSource = ReturnType<typeof makeDiscordSource>;

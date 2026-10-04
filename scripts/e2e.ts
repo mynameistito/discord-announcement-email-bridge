@@ -568,8 +568,8 @@ const assertChannels = async (): Promise<void> => {
   }
 };
 
-const waitForCrosspost = async (messageId: string): Promise<void> => {
-  await waitUntil(
+const waitForCrosspost = async (messageId: string): Promise<string> => {
+  const receiverMessages = await waitUntil(
     (signal) =>
       jsonRequest<readonly DiscordMessage[]>(
         `${discordApi}/channels/${receiverChannelId}/messages?limit=100`,
@@ -587,18 +587,28 @@ const waitForCrosspost = async (messageId: string): Promise<void> => {
     60_000,
     "Discord did not create the follower crosspost within 60 seconds"
   );
+
+  const followerCopy = receiverMessages.find(
+    (message) => message.message_reference?.message_id === messageId
+  );
+
+  if (!followerCopy?.id) {
+    throw new Error("Discord follower copy did not include a message ID");
+  }
+
+  return followerCopy.id;
 };
 
 const deliveryStatus = async (
   workerUrl: string,
   headers: HeadersInput,
   signal?: AbortSignal,
-  sourceMessageId?: string
+  discordMessageId?: string
 ): Promise<WorkerStatus> => {
   const statusUrl = new URL(`${workerUrl}/admin/status`);
 
-  if (sourceMessageId) {
-    statusUrl.searchParams.set("sourceMessageId", sourceMessageId);
+  if (discordMessageId) {
+    statusUrl.searchParams.set("discordMessageId", discordMessageId);
   }
 
   const statusInit: RequestInit = { headers };
@@ -628,7 +638,7 @@ const deliveryStatus = async (
 const waitForDelivery = async (
   workerUrl: string,
   headers: HeadersInput,
-  sourceMessageId: string
+  discordMessageId: string
 ): Promise<void> => {
   await waitUntil(
     async (signal) => {
@@ -636,7 +646,7 @@ const waitForDelivery = async (
         workerUrl,
         headers,
         signal,
-        sourceMessageId
+        discordMessageId
       );
 
       if ((status.targetFailedDeliveries ?? 0) > 0) {
@@ -765,7 +775,7 @@ const run = async (workerUrl: string): Promise<void> => {
 
   log("Crossposted announcement; waiting for the follower copy...");
 
-  await waitForCrosspost(created.id);
+  const followerCopyId = await waitForCrosspost(created.id);
 
   log("Follower copy appeared in the receiver channel.", "success");
 
@@ -782,7 +792,7 @@ const run = async (workerUrl: string): Promise<void> => {
 
   log("Poll accepted; waiting for the queued email delivery...");
 
-  await waitForDelivery(base, adminHeaders, created.id);
+  await waitForDelivery(base, adminHeaders, followerCopyId);
 
   log(
     `E2E passed. Discord message ${created.id}; Worker recorded a successful Resend delivery.`,

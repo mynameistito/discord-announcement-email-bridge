@@ -73,7 +73,7 @@ const pollResponse = async (
  * @param pathname - Request path to route.
  * @param env - Worker bindings for the selected operation.
  * @param runPoll - Poll implementation used by poll and replay routes.
- * @param sourceMessageId - Optional source message to scope delivery status to.
+ * @param discordMessageId - Optional follower-copy ID to scope delivery status to.
  * @returns The response for the matched route or a 404 response.
  */
 export const adminResponse = async (
@@ -81,7 +81,7 @@ export const adminResponse = async (
   pathname: string,
   env: WorkerEnv,
   runPoll: (env: WorkerEnv) => Promise<PollResult>,
-  sourceMessageId?: string
+  discordMessageId?: string
 ): Promise<Response> => {
   if (method === "POST" && pathname === "/admin/poll") {
     return pollResponse(env, runPoll);
@@ -106,11 +106,13 @@ export const adminResponse = async (
     return Effect.runPromise(
       d1(() =>
         env.DB.prepare(
-          sourceMessageId
-            ? "SELECT (SELECT MAX(updated_at) FROM channel_cursors) AS last_poll, (SELECT COUNT(*) FROM deliveries WHERE status = 'pending') AS pending, (SELECT COUNT(*) FROM deliveries WHERE status = 'failed') AS failed, (SELECT COUNT(*) FROM deliveries WHERE status = 'sent') AS sent, (SELECT COUNT(*) FROM deliveries d JOIN announcements a ON a.id = d.announcement_id WHERE a.source_message_id = ? AND d.status = 'sent') AS target_sent, (SELECT COUNT(*) FROM deliveries d JOIN announcements a ON a.id = d.announcement_id WHERE a.source_message_id = ? AND d.status = 'failed') AS target_failed"
+          discordMessageId
+            ? "SELECT (SELECT MAX(updated_at) FROM channel_cursors) AS last_poll, (SELECT COUNT(*) FROM deliveries WHERE status = 'pending') AS pending, (SELECT COUNT(*) FROM deliveries WHERE status = 'failed') AS failed, (SELECT COUNT(*) FROM deliveries WHERE status = 'sent') AS sent, (SELECT COUNT(*) FROM deliveries d JOIN announcements a ON a.id = d.announcement_id WHERE a.discord_message_id = ? AND d.status = 'sent') AS target_sent, (SELECT COUNT(*) FROM deliveries d JOIN announcements a ON a.id = d.announcement_id WHERE a.discord_message_id = ? AND d.status = 'failed') AS target_failed"
             : "SELECT (SELECT MAX(updated_at) FROM channel_cursors) AS last_poll, (SELECT COUNT(*) FROM deliveries WHERE status = 'pending') AS pending, (SELECT COUNT(*) FROM deliveries WHERE status = 'failed') AS failed, (SELECT COUNT(*) FROM deliveries WHERE status = 'sent') AS sent"
         )
-          .bind(...(sourceMessageId ? [sourceMessageId, sourceMessageId] : []))
+          .bind(
+            ...(discordMessageId ? [discordMessageId, discordMessageId] : [])
+          )
           .first<StatusRow>()
       ).pipe(
         Effect.match({
@@ -124,7 +126,7 @@ export const adminResponse = async (
               sentDeliveries: row?.sent ?? 0,
             };
 
-            if (sourceMessageId) {
+            if (discordMessageId) {
               response.targetFailedDeliveries = row?.target_failed ?? 0;
               response.targetSentDeliveries = row?.target_sent ?? 0;
             }

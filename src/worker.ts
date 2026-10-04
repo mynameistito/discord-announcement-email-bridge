@@ -25,7 +25,7 @@ const worker = {
       request.method,
       url.pathname,
       env,
-      url.searchParams.get("sourceMessageId") ?? undefined
+      url.searchParams.get("discordMessageId") ?? undefined
     );
   },
 

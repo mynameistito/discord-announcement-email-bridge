@@ -45,8 +45,6 @@ describe("Discord REST failure diagnostics", () => {
   it("does not suggest permission changes for other HTTP failures", () => {
     expect(
       describeDiscordFailure("/channels/123456/messages", 500, undefined)
-    ).toBe(
-      "Discord REST GET /channels/{channel_id}/messages returned 500"
-    );
+    ).toBe("Discord REST GET /channels/{channel_id}/messages returned 500");
   });
 });

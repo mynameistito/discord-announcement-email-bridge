@@ -109,6 +109,8 @@ export const sendEmail = (
     }),
     Retry.none,
     Effect.mapError(toResendApiError),
-    Effect.provide(resendLayer(env, idempotencyKey))
+    Effect.provide(resendLayer(env, idempotencyKey)),
+    Effect.timeout("60 seconds"),
+    Effect.mapError(toResendApiError)
   );
 };

@@ -113,20 +113,24 @@ export const makeRepository = (env: WorkerEnv): PollingPorts["repository"] => ({
         .run()
     ).pipe(Effect.asVoid),
   pendingDeliveries: (id) =>
-    d1(() =>
-      env.DB.prepare(
-        "SELECT d.id AS delivery_id, d.announcement_id FROM deliveries d JOIN announcements a ON a.id = d.announcement_id WHERE a.subscription_id = ? AND d.status = 'pending' ORDER BY d.created_at LIMIT 500"
-      )
-        .bind(id)
-        .all<DeliveryRow>()
-    ).pipe(
-      Effect.map((result) =>
-        result.results.map((row) => ({
-          announcementId: row.announcement_id,
-          deliveryId: row.delivery_id,
-        }))
-      )
-    ),
+    Effect.gen(function* pendingDeliveriesEffect() {
+      yield* d1(() =>
+        env.DB.prepare(
+          "UPDATE deliveries SET status = 'pending', claim_token = NULL, claim_expires_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE status = 'queued' AND claim_token IS NOT NULL AND claim_expires_at <= CURRENT_TIMESTAMP"
+        ).run()
+      );
+      const result = yield* d1(() =>
+        env.DB.prepare(
+          "SELECT d.id AS delivery_id, d.announcement_id FROM deliveries d JOIN announcements a ON a.id = d.announcement_id WHERE a.subscription_id = ? AND d.status = 'pending' ORDER BY d.created_at LIMIT 500"
+        )
+          .bind(id)
+          .all<DeliveryRow>()
+      );
+      return result.results.map((row) => ({
+        announcementId: row.announcement_id,
+        deliveryId: row.delivery_id,
+      }));
+    }),
   persistDiscoveryBatch: (subscription, announcements, cursor) =>
     persistBatch(env, subscription, announcements, cursor),
 });
@@ -157,24 +161,61 @@ export const updateDeliveryFailure = (
   env: WorkerEnv,
   id: string,
   error: string,
-  retryable: boolean
+  retryable: boolean,
+  claimToken: string
 ) =>
   d1(() =>
     env.DB.prepare(
-      "UPDATE deliveries SET status = ?, attempts = attempts + 1, last_error = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status != 'sent'"
+      "UPDATE deliveries SET status = ?, attempts = attempts + 1, last_error = ?, claim_token = NULL, claim_expires_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status != 'sent' AND claim_token = ?"
     )
-      .bind(retryable ? "queued" : "failed", error.slice(0, 500), id)
+      .bind(
+        retryable ? "queued" : "failed",
+        error.slice(0, 500),
+        id,
+        claimToken
+      )
       .run()
   ).pipe(Effect.asVoid);
 
 export const markDeadLetter = (env: WorkerEnv, id: string) =>
   d1(() =>
     env.DB.prepare(
-      "UPDATE deliveries SET status = 'failed', last_error = 'queue_retry_exhausted', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status != 'sent'"
+      "UPDATE deliveries SET status = 'failed', last_error = 'queue_retry_exhausted', claim_token = NULL, claim_expires_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status != 'sent' AND (claim_token IS NULL OR claim_expires_at <= CURRENT_TIMESTAMP)"
     )
       .bind(id)
       .run()
-  ).pipe(Effect.asVoid);
+  ).pipe(Effect.map((result) => result.meta.changes > 0));
+
+/**
+ * Atomically claim a queued delivery or report its current ownership state.
+ * The two-minute lease exceeds the Resend adapter's 60-second request timeout.
+ */
+export const claimDelivery = (
+  env: WorkerEnv,
+  id: string,
+  announcementId: string,
+  claimToken: string
+) =>
+  Effect.gen(function* claimDeliveryEffect() {
+    const claimed = yield* d1(() =>
+      env.DB.prepare(
+        "UPDATE deliveries SET claim_token = ?, claim_expires_at = datetime('now', '+2 minutes'), updated_at = CURRENT_TIMESTAMP WHERE id = ? AND announcement_id = ? AND status IN ('pending', 'queued') AND (claim_token IS NULL OR claim_expires_at <= CURRENT_TIMESTAMP) RETURNING id"
+      )
+        .bind(claimToken, id, announcementId)
+        .first<ClaimRow>()
+    );
+    if (claimed) {
+      return "claimed" as const;
+    }
+    const activeClaim = yield* d1(() =>
+      env.DB.prepare(
+        "SELECT id FROM deliveries WHERE id = ? AND announcement_id = ? AND status IN ('pending', 'queued') AND claim_token IS NOT NULL AND claim_expires_at > CURRENT_TIMESTAMP"
+      )
+        .bind(id, announcementId)
+        .first<ClaimRow>()
+    );
+    return activeClaim ? ("in_flight" as const) : ("complete" as const);
+  });
 
 interface SubscriptionRow {
   readonly id: string;
@@ -190,4 +231,7 @@ interface CursorRow {
 interface DeliveryRow {
   readonly delivery_id: string;
   readonly announcement_id: string;
+}
+interface ClaimRow {
+  readonly id: string;
 }

@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 
 import {
+  claimDelivery as claimDeliveryInD1,
   makeRepository,
   markDeadLetter,
   updateDeliveryFailure,
@@ -52,16 +53,26 @@ export const poll = async (
 
 export const delivery = (
   env: WorkerEnv,
+  claimToken: string,
   deliveryId: string,
   announcementId: string
-) => deliver(env, deliveryId, announcementId);
+) => deliver(env, claimToken, deliveryId, announcementId);
+
+/** Claim a delivery before running its external email side effect. */
+export const claimDelivery = (
+  env: WorkerEnv,
+  deliveryId: string,
+  announcementId: string,
+  claimToken: string
+) => claimDeliveryInD1(env, deliveryId, announcementId, claimToken);
 
 export const recordFailure = (
   env: WorkerEnv,
   id: string,
   message: string,
-  retryable: boolean
-) => updateDeliveryFailure(env, id, message, retryable);
+  retryable: boolean,
+  claimToken: string
+) => updateDeliveryFailure(env, id, message, retryable, claimToken);
 export const failDeadLetter = (env: WorkerEnv, id: string) =>
   markDeadLetter(env, id);
 

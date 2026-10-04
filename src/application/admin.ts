@@ -58,7 +58,7 @@ export const adminResponse = async (
     const reset = await Effect.runPromiseExit(
       d1(() =>
         env.DB.prepare(
-          "UPDATE deliveries SET status = 'pending', last_error = NULL, updated_at = CURRENT_TIMESTAMP WHERE status = 'failed'"
+          "UPDATE deliveries SET status = 'pending', last_error = NULL, claim_token = NULL, claim_expires_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE status = 'failed'"
         ).run()
       )
     );

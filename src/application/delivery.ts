@@ -26,6 +26,7 @@ const emailSender = (name: string, address: string): string =>
 
 export const deliver = (
   env: WorkerEnv,
+  claimToken: string,
   deliveryId: string,
   announcementId: string
 ) =>
@@ -94,13 +95,22 @@ export const deliver = (
       },
       delivery.idempotency_key
     );
-    yield* d1(() =>
+    const markedSent = yield* d1(() =>
       env.DB.prepare(
-        "UPDATE deliveries SET status = 'sent', resend_email_id = ?, attempts = attempts + 1, updated_at = CURRENT_TIMESTAMP, sent_at = CURRENT_TIMESTAMP, last_error = NULL WHERE id = ? AND status != 'sent'"
+        "UPDATE deliveries SET status = 'sent', resend_email_id = ?, attempts = attempts + 1, claim_token = NULL, claim_expires_at = NULL, updated_at = CURRENT_TIMESTAMP, sent_at = CURRENT_TIMESTAMP, last_error = NULL WHERE id = ? AND status != 'sent' AND claim_token = ? RETURNING id"
       )
-        .bind(response.id, delivery.id)
-        .run()
+        .bind(response.id, delivery.id, claimToken)
+        .first<DeliveryIdRow>()
     );
+    if (!markedSent) {
+      return yield* Effect.fail(
+        new BridgeInfrastructureError(
+          "complete_delivery",
+          "delivery claim expired before completion",
+          true
+        )
+      );
+    }
     yield* Effect.logInfo("delivery.sent", {
       resendEmailId: response.id,
     });
@@ -112,6 +122,9 @@ interface DeliveryState {
   readonly recipient: string;
   readonly status: DeliveryStatus;
   readonly idempotency_key: string;
+}
+interface DeliveryIdRow {
+  readonly id: string;
 }
 interface AnnouncementRow {
   readonly normalized_payload: string;

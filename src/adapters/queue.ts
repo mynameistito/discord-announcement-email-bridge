@@ -4,6 +4,7 @@ import type { WorkerEnv } from "@/alchemy.run";
 import { ApiError } from "@/application/delivery-error";
 import { BridgeInfrastructureError } from "@/bridge-infrastructure-error";
 import {
+  claimDelivery,
   delivery,
   failDeadLetter,
   recordFailure,
@@ -51,16 +52,46 @@ export const processQueue = async (
         return;
       }
       if (batch.queue === env.DELIVERY_DEAD_LETTER_QUEUE_NAME) {
-        await Effect.runPromise(failDeadLetter(env, payload.value.deliveryId));
+        const failed = await Effect.runPromise(
+          failDeadLetter(env, payload.value.deliveryId)
+        );
         console.error(
           JSON.stringify({
-            event: "delivery.dead_lettered",
+            event: failed
+              ? "delivery.dead_lettered"
+              : "delivery.dead_letter_deferred",
           })
         );
         return;
       }
+      const claimToken = crypto.randomUUID();
+      const claim = await Effect.runPromiseExit(
+        claimDelivery(
+          env,
+          payload.value.deliveryId,
+          payload.value.announcementId,
+          claimToken
+        )
+      );
+      if (claim._tag === "Failure") {
+        console.error(JSON.stringify({ event: "delivery.claim_failed" }));
+        message.retry({ delaySeconds: 60 });
+        return;
+      }
+      if (claim.value === "complete") {
+        return;
+      }
+      if (claim.value === "in_flight") {
+        message.retry({ delaySeconds: 60 });
+        return;
+      }
       const result = await Effect.runPromiseExit(
-        delivery(env, payload.value.deliveryId, payload.value.announcementId)
+        delivery(
+          env,
+          claimToken,
+          payload.value.deliveryId,
+          payload.value.announcementId
+        )
       );
       if (result._tag === "Success") {
         return;
@@ -69,7 +100,13 @@ export const processQueue = async (
       const errorMessage = safeError(result.cause);
       const retryable = isRetryable(result.cause);
       const recorded = await Effect.runPromiseExit(
-        recordFailure(env, payload.value.deliveryId, errorMessage, retryable)
+        recordFailure(
+          env,
+          payload.value.deliveryId,
+          errorMessage,
+          retryable,
+          claimToken
+        )
       );
       if (recorded._tag === "Failure") {
         console.error(

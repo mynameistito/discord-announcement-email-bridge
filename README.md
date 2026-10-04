@@ -104,9 +104,8 @@ Logs contain event names, delivery IDs, and sanitized error messages; do not add
 
 Run the full test only against a dedicated non-production Alchemy stage, Discord test bot and followed test channel, Resend test key/sender, and test recipient. Never use the `prod` stage or production credentials. The test sends an email to the configured test recipient. Alchemy stages isolate the Worker, D1 database, and Queues; non-production stages have no Cron Trigger.
 
-Add these fields to the `discord-announcement-email-bridge` item in the `github-actions` 1Password vault, using dedicated test resources and values (do not copy the production Discord guild, channel, recipient, or Resend credentials):
+Reuse the shared `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` fields already used by the deployment workflow. Do not replace them with E2E-specific values. Add only the dedicated test application fields below to the `discord-announcement-email-bridge` item in the `github-actions` 1Password vault; do not copy production Discord, recipient, or Resend credentials:
 
-- `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`
 - `DISCORD_E2E_BOT_TOKEN`, `DISCORD_E2E_GUILD_ID`, `DISCORD_E2E_TARGET_CHANNEL_ID`
 - `EMAIL_E2E_TO`, `RESEND_E2E_API_KEY`, `EMAIL_E2E_FROM_NAME`, `EMAIL_E2E_FROM_EMAIL`
 - `ADMIN_E2E_TOKEN`

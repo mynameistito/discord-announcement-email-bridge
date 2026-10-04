@@ -9,7 +9,11 @@ import type {
   Subscription,
 } from "@/domain";
 
-/** Determine whether the message has content worth sending in an email. */
+/**
+ * Determine whether the message has content worth sending in an email.
+ * @param message - Candidate message to inspect.
+ * @returns Whether the message contains text, embeds, or attachments.
+ */
 const hasReadableContent = (message: DiscordMessage): boolean =>
   Boolean(message.content) ||
   message.embeds.length > 0 ||
@@ -18,6 +22,10 @@ const hasReadableContent = (message: DiscordMessage): boolean =>
 /**
  * Verify follower webhooks and source constraints, cache each webhook lookup,
  * and retain only announcements that contain renderable content.
+ * @param ports - Discord source used to retrieve webhook metadata.
+ * @param subscription - Subscription constraints applied to each message.
+ * @param messages - Candidate destination-channel messages.
+ * @returns An Effect containing verified, renderable announcements.
  */
 export const classifyMessages = (
   ports: PollingPorts,

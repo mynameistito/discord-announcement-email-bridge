@@ -11,7 +11,11 @@ import type { Announcement } from "@/domain";
 /** Decode the JSON payload stored with each durable announcement row. */
 const StoredMessageSchema = Schema.fromJsonString(MessageSchema);
 
-/** Build a bounded, newline-free email subject from announcement text. */
+/**
+ * Build a bounded, newline-free email subject from announcement text.
+ * @param announcement - Verified announcement to summarize.
+ * @returns A sanitized subject line of at most 150 characters.
+ */
 export const emailSubject = (announcement: Announcement): string => {
   const title = announcement.message.embeds.find((embed) => embed.title)?.title;
   const safeTitle = (title ?? announcement.message.content)
@@ -23,13 +27,23 @@ export const emailSubject = (announcement: Announcement): string => {
     : "[Discord] New announcement";
 };
 
-/** Sanitize sender display name and address before composing the From header. */
+/**
+ * Sanitize sender display name and address before composing the From header.
+ * @param name - Sender display name.
+ * @param address - Sender email address.
+ * @returns A sanitized RFC-style From header value.
+ */
 const emailSender = (name: string, address: string): string =>
   `${name.trim().replaceAll(/[\r\n<>]+/gu, " ")} <${address.trim().replaceAll(/[\r\n<>]/gu, "")}>`;
 
 /**
  * Load and validate a persisted announcement, send its email with a stable
  * provider idempotency key, and mark it sent only if the claim token still owns it.
+ * @param env - Worker bindings for D1 and Resend.
+ * @param claimToken - Token proving ownership of the active delivery lease.
+ * @param deliveryId - Durable delivery row identifier.
+ * @param announcementId - Durable announcement row identifier.
+ * @returns An Effect that sends and records the email or fails with a typed error.
  */
 export const deliver = (
   env: WorkerEnv,

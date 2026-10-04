@@ -31,7 +31,11 @@ const errorStatuses = new Map([
   ["UnprocessableEntity", 422],
 ]);
 
-/** Convert SDK failures into sanitized Discord errors with retry metadata. */
+/**
+ * Convert SDK failures into sanitized Discord errors with retry metadata.
+ * @param cause - Unknown failure returned by the Discord SDK.
+ * @returns A sanitized API error with status and retry classification.
+ */
 const toDiscordApiError = (cause: unknown): DiscordApiError => {
   if (cause instanceof DiscordApiError) {
     return cause;
@@ -56,7 +60,11 @@ const toDiscordApiError = (cause: unknown): DiscordApiError => {
   );
 };
 
-/** Compose the fetch, bot credential, and Discord protocol layers. */
+/**
+ * Compose the fetch, bot credential, and Discord protocol layers.
+ * @param env - Worker bindings containing the Discord bot token.
+ * @returns A merged Effect layer for Discord REST operations.
+ */
 const discordLayer = (env: WorkerEnv) =>
   Layer.mergeAll(
     fetchLayer,
@@ -64,7 +72,13 @@ const discordLayer = (env: WorkerEnv) =>
     DiscordProtocol
   );
 
-/** Fetch one Discord message page without SDK retries or eager decoding. */
+/**
+ * Fetch one Discord message page without SDK retries or eager decoding.
+ * @param env - Worker bindings containing the Discord bot token.
+ * @param channelId - Destination channel to read.
+ * @param pagination - Optional exclusive pagination boundary.
+ * @returns An Effect containing raw message payloads or a Discord API error.
+ */
 const messages = (
   env: WorkerEnv,
   channelId: string,
@@ -83,7 +97,12 @@ const messages = (
       Effect.provide(discordLayer(env))
     );
 
-/** Fetch and validate webhook metadata; represent missing webhooks as null. */
+/**
+ * Fetch and validate webhook metadata; represent missing webhooks as null.
+ * @param env - Worker bindings containing the Discord bot token.
+ * @param webhookId - Webhook identifier to retrieve.
+ * @returns An Effect containing validated metadata, `null` when missing, or an API error.
+ */
 const webhook = (
   env: WorkerEnv,
   webhookId: string
@@ -113,6 +132,8 @@ const webhook = (
 /**
  * Create polling ports bound to the supplied Worker's bot credentials.
  * Returned methods expose page-based message reads and validated webhook reads.
+ * @param env - Worker bindings containing the Discord bot token.
+ * @returns Discord source operations bound to these credentials.
  */
 export const makeDiscordSource = (env: WorkerEnv) => ({
   fetchAfter: (channelId: string, after: string) =>

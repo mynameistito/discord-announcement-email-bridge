@@ -10,6 +10,8 @@ export interface WorkerStageConfig {
 /**
  * Validate a stage label and produce a legal Worker name and cron schedule.
  * Production polls each minute; non-production stages have no scheduled poll.
+ * @param stage - Lowercase alphanumeric stage label with optional single hyphens.
+ * @returns Worker identity and scheduled triggers for the stage.
  */
 export const workerStageConfig = (stage: string): WorkerStageConfig => {
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(stage)) {

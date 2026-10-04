@@ -23,6 +23,8 @@ import { BridgeInfrastructureError } from "@/bridge-infrastructure-error";
 /**
  * Seed the configured subscription, compose its ports, and run all polling
  * work while returning a sanitized status for cron and admin callers.
+ * @param env - Worker bindings required by polling infrastructure.
+ * @returns A sanitized polling status for the caller.
  */
 export const poll = async (
   env: WorkerEnv
@@ -57,7 +59,14 @@ export const poll = async (
     : { error: safeError(result.cause), ok: false };
 };
 
-/** Delegate one already-claimed delivery to the application delivery use case. */
+/**
+ * Delegate one already-claimed delivery to the application delivery use case.
+ * @param env - Worker bindings required for delivery.
+ * @param claimToken - Active delivery lease token.
+ * @param deliveryId - Durable delivery row identifier.
+ * @param announcementId - Durable announcement row identifier.
+ * @returns The delivery Effect.
+ */
 export const delivery = (
   env: WorkerEnv,
   claimToken: string,
@@ -68,6 +77,9 @@ export const delivery = (
 /**
  * Bind queue processing to environment-backed D1 claims, email delivery,
  * failure recording, and dead-letter handling.
+ * @param batch - Queue messages to process.
+ * @param env - Worker bindings for queue and D1 operations.
+ * @returns A promise that resolves after batch processing.
  */
 export const consumeQueue = (batch: MessageBatch<unknown>, env: WorkerEnv) => {
   const operations: QueueOperations = {
@@ -83,7 +95,14 @@ export const consumeQueue = (batch: MessageBatch<unknown>, env: WorkerEnv) => {
   return processQueue(batch, env.DELIVERY_DEAD_LETTER_QUEUE_NAME, operations);
 };
 
-/** Claim a delivery atomically before running its external email side effect. */
+/**
+ * Claim a delivery atomically before running its external email side effect.
+ * @param env - Worker bindings including D1.
+ * @param deliveryId - Durable delivery row identifier.
+ * @param announcementId - Durable announcement row identifier.
+ * @param claimToken - Token to assign to the delivery lease.
+ * @returns The claim operation Effect.
+ */
 export const claimDelivery = (
   env: WorkerEnv,
   deliveryId: string,
@@ -91,7 +110,15 @@ export const claimDelivery = (
   claimToken: string
 ) => claimDeliveryInD1(env, deliveryId, announcementId, claimToken);
 
-/** Record a failed attempt while guarding the update with its claim token. */
+/**
+ * Record a failed attempt while guarding the update with its claim token.
+ * @param env - Worker bindings including D1.
+ * @param id - Durable delivery row identifier.
+ * @param message - Sanitized failure message.
+ * @param retryable - Whether the queue should retry the delivery.
+ * @param claimToken - Token proving ownership of the delivery lease.
+ * @returns The update Effect.
+ */
 export const recordFailure = (
   env: WorkerEnv,
   id: string,
@@ -100,11 +127,22 @@ export const recordFailure = (
   claimToken: string
 ) => updateDeliveryFailure(env, id, message, retryable, claimToken);
 
-/** Mark a delivery failed when the platform moves it to the dead-letter queue. */
+/**
+ * Mark a delivery failed when the platform moves it to the dead-letter queue.
+ * @param env - Worker bindings including D1.
+ * @param id - Durable delivery row identifier.
+ * @returns An Effect indicating whether a row was marked failed.
+ */
 export const failDeadLetter = (env: WorkerEnv, id: string) =>
   markDeadLetter(env, id);
 
-/** Route an authorized HTTP request through the application admin handlers. */
+/**
+ * Route an authorized HTTP request through the application admin handlers.
+ * @param method - HTTP method of the request.
+ * @param pathname - Request path to route.
+ * @param env - Worker bindings for the admin operation.
+ * @returns The selected admin HTTP response.
+ */
 export const adminResponse = (
   method: string,
   pathname: string,

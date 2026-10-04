@@ -22,7 +22,14 @@ interface DeliveryCounters {
   retries: number;
 }
 
-/** Create an in-memory queue operation set that permits one active owner. */
+/**
+ * Create an in-memory queue operation set that permits one active owner.
+ * @param started - Deferred signal indicating that sending has started.
+ * @param release - Deferred signal allowing the send to finish.
+ * @param bothClaims - Deferred signal indicating both queue items tried claiming.
+ * @param counters - Mutable observations updated by queue operations.
+ * @returns Queue operations backed by the in-memory state.
+ */
 const makeQueueOperations = (
   started: Deferred.Deferred<boolean>,
   release: Deferred.Deferred<boolean>,
@@ -60,7 +67,12 @@ const makeQueueOperations = (
   safeError: () => "test failure",
 });
 
-/** Build a correctly typed queue message with the given retry callback. */
+/**
+ * Build a correctly typed queue message with the given retry callback.
+ * @param acknowledge - Callback invoked when the message is acknowledged.
+ * @param retry - Callback invoked when the message is retried.
+ * @returns A Cloudflare queue message for the test batch.
+ */
 const queueMessage = (
   acknowledge: () => void,
   retry: () => void
@@ -73,7 +85,12 @@ const queueMessage = (
   timestamp: new Date(),
 });
 
-/** Build a batch whose shape matches the Cloudflare queue binding contract. */
+/**
+ * Build a batch whose shape matches the Cloudflare queue binding contract.
+ * @param messages - Messages included in the batch.
+ * @param counters - Mutable observations updated by batch acknowledgements.
+ * @returns A Cloudflare queue batch for tests.
+ */
 const queueBatch = (
   messages: readonly Message<unknown>[],
   counters: DeliveryCounters

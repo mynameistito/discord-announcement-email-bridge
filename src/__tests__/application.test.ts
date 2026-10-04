@@ -15,7 +15,11 @@ const subscription: Subscription = {
   id: "sub",
 };
 
-/** Build a valid followed crosspost fixture with the requested snowflake ID. */
+/**
+ * Build a valid followed crosspost fixture with the requested snowflake ID.
+ * @param id - Discord message snowflake used by the fixture.
+ * @returns A raw message object matching the followed-crosspost shape.
+ */
 const crosspost = (id: string) => ({
   attachments: [],
   author: { username: "news" },
@@ -42,7 +46,13 @@ interface FakePollingPorts {
   readonly beforeValues: () => readonly string[];
 }
 
-/** Construct polling ports whose repository and source record test activity. */
+/**
+ * Construct polling ports whose repository and source record test activity.
+ * @param pages - Ordered fake Discord message pages.
+ * @param initialCursor - Initial cursor, or `null` for an uninitialized channel.
+ * @param failEnqueueCount - Number of initial queue attempts that should fail.
+ * @returns Fake ports and read-only observations of test activity.
+ */
 const fakePorts = (
   pages: readonly (readonly unknown[])[],
   initialCursor: string | null = "100",

@@ -48,7 +48,11 @@ const ResendFailureSchema = Schema.Struct({
   message: Schema.optional(Schema.String),
 });
 
-/** Normalize provider failures and classify whether the queue should retry. */
+/**
+ * Normalize provider failures and classify whether the queue should retry.
+ * @param cause - Unknown failure returned by the Resend SDK.
+ * @returns A sanitized API error with status and retry classification.
+ */
 const toResendApiError = (cause: unknown): ApiError => {
   if (cause instanceof ApiError) {
     return cause;
@@ -71,7 +75,11 @@ const toResendApiError = (cause: unknown): ApiError => {
   );
 };
 
-/** Add the stable idempotency header only to Resend email creation requests. */
+/**
+ * Add the stable idempotency header only to Resend email creation requests.
+ * @param idempotencyKey - Stable key reused for retries of the same delivery.
+ * @returns An HTTP client layer that adds the key to email creation requests.
+ */
 const idempotencyHttpClientLayer = (idempotencyKey: string) =>
   Layer.effect(
     HttpClient,
@@ -90,7 +98,12 @@ const idempotencyHttpClientLayer = (idempotencyKey: string) =>
     )
   ).pipe(Layer.provide(fetchLayer));
 
-/** Compose authenticated Resend and HTTP middleware layers for one send. */
+/**
+ * Compose authenticated Resend and HTTP middleware layers for one send.
+ * @param env - Worker binding containing the Resend API key.
+ * @param idempotencyKey - Stable key to attach to email creation requests.
+ * @returns A merged Effect layer for authenticated Resend requests.
+ */
 const resendLayer = (
   env: Pick<WorkerEnv, "RESEND_API_KEY">,
   idempotencyKey: string

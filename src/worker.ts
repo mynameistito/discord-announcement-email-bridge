@@ -4,7 +4,12 @@ import { adminResponse, consumeQueue, poll } from "@/composition";
 
 /** Cloudflare Worker entry point for HTTP, queue, and scheduled events. */
 const worker = {
-  /** Route health and authenticated admin HTTP requests. */
+  /**
+   * Route health and authenticated admin HTTP requests.
+   * @param request - Incoming Worker request.
+   * @param env - Worker environment bindings.
+   * @returns The health, admin, or not-found HTTP response.
+   */
   async fetch(request: Request, env: WorkerEnv): Promise<Response> {
     const url = new URL(request.url);
     if (request.method === "GET" && url.pathname === "/healthz") {
@@ -19,12 +24,22 @@ const worker = {
     return adminResponse(request.method, url.pathname, env);
   },
 
-  /** Delegate a delivery queue batch to the claim-aware queue consumer. */
+  /**
+   * Delegate a delivery queue batch to the claim-aware queue consumer.
+   * @param batch - Queue batch to process.
+   * @param env - Worker environment bindings.
+   * @returns A promise that resolves when queue processing finishes.
+   */
   async queue(batch: MessageBatch<unknown>, env: WorkerEnv): Promise<void> {
     await consumeQueue(batch, env);
   },
 
-  /** Poll enabled subscriptions when the production cron fires. */
+  /**
+   * Poll enabled subscriptions when the production cron fires.
+   * @param _controller - Cloudflare scheduled-event metadata.
+   * @param env - Worker environment bindings.
+   * @returns A promise that resolves after polling completes.
+   */
   async scheduled(
     _controller: ScheduledController,
     env: WorkerEnv

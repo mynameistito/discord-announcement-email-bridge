@@ -19,7 +19,12 @@ const subscription: Subscription = {
   id: "sub-1",
 };
 
-/** Build a valid message fixture with a chosen ID and selective overrides. */
+/**
+ * Build a valid message fixture with a chosen ID and selective overrides.
+ * @param id - Discord message snowflake used by the fixture.
+ * @param overrides - Optional message fields that replace fixture defaults.
+ * @returns A valid Discord message for domain tests.
+ */
 const message = (
   id: string,
   overrides: Partial<DiscordMessage> = {}

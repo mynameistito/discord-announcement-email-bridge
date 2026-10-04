@@ -75,7 +75,11 @@ export class PollingService extends Context.Service<
   PollingPorts
 >()("discord-email/PollingService") {}
 
-/** Bind a concrete polling port implementation to the Effect service tag. */
+/**
+ * Bind a concrete polling port implementation to the Effect service tag.
+ * @param ports - Concrete infrastructure operations for polling.
+ * @returns A Layer providing the polling service.
+ */
 export const pollingServiceLayer = (
   ports: PollingPorts
 ): Layer.Layer<PollingService> => Layer.succeed(PollingService, ports);

@@ -10,7 +10,11 @@ interface PollResult {
   readonly error?: string;
 }
 
-/** Build the non-sensitive health payload exposed to platform probes. */
+/**
+ * Build the non-sensitive health payload exposed to platform probes.
+ * @param env - Build and stage bindings exposed by the health response.
+ * @returns A JSON response containing safe health metadata.
+ */
 export const healthResponse = (
   env: Pick<WorkerEnv, "BUILD_VERSION" | "STAGE">
 ) =>
@@ -23,6 +27,9 @@ export const healthResponse = (
 /**
  * Validate a Bearer token using fixed-length SHA-256 digests and a
  * timing-safe comparison to avoid leaking token matches through timing.
+ * @param request - Request whose Authorization header is checked.
+ * @param token - Expected bearer token.
+ * @returns Whether the supplied non-empty token matches.
  */
 export const authorized = async (
   request: Request,
@@ -43,7 +50,12 @@ export const authorized = async (
   );
 };
 
-/** Run one poll and translate its outcome into the admin HTTP response. */
+/**
+ * Run one poll and translate its outcome into the admin HTTP response.
+ * @param env - Worker bindings passed to the poll operation.
+ * @param runPoll - Poll implementation to invoke.
+ * @returns An accepted or unavailable HTTP response.
+ */
 const pollResponse = async (
   env: WorkerEnv,
   runPoll: (env: WorkerEnv) => Promise<PollResult>
@@ -57,6 +69,11 @@ const pollResponse = async (
 /**
  * Route authorized admin operations for polling, replay, and delivery status.
  * Unknown paths and methods return a 404 without exposing internal failures.
+ * @param method - HTTP method of the request.
+ * @param pathname - Request path to route.
+ * @param env - Worker bindings for the selected operation.
+ * @param runPoll - Poll implementation used by poll and replay routes.
+ * @returns The response for the matched route or a 404 response.
  */
 export const adminResponse = async (
   method: string,
@@ -106,7 +123,11 @@ export const adminResponse = async (
   return new Response("Not Found", { status: 404 });
 };
 
-/** Build a subscription from required Worker bindings, if fully configured. */
+/**
+ * Build a subscription from required Worker bindings, if fully configured.
+ * @param env - Worker bindings containing subscription configuration.
+ * @returns The configured subscription, or `undefined` when required values are absent.
+ */
 export const subscriptionFromEnv = (env: WorkerEnv) => {
   if (
     !env.DISCORD_GUILD_ID ||
@@ -129,7 +150,12 @@ export const subscriptionFromEnv = (env: WorkerEnv) => {
   };
 };
 
-/** Persist the active environment-derived subscription before polling. */
+/**
+ * Persist the active environment-derived subscription before polling.
+ * @param env - Worker bindings including D1.
+ * @param subscription - Fully configured subscription to persist.
+ * @returns The D1 operation result as a success or failure Exit.
+ */
 export const seedSubscription = (
   env: WorkerEnv,
   subscription: NonNullable<ReturnType<typeof subscriptionFromEnv>>
@@ -138,6 +164,8 @@ export const seedSubscription = (
 /**
  * Produce a bounded error string without serializing secrets or arbitrary
  * objects from failed Effects.
+ * @param cause - Failure cause returned by an Effect.
+ * @returns A sanitized diagnostic string limited to 300 characters.
  */
 export const safeError = (cause: Cause.Cause<unknown>): string => {
   const failure = Cause.findErrorOption(cause);

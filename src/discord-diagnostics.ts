@@ -15,7 +15,11 @@ interface SafeRoute {
   readonly requiredPermissions?: string;
 }
 
-/** Replace known resource paths with templates and their required permissions. */
+/**
+ * Replace known resource paths with templates and their required permissions.
+ * @param path - Discord API path that may include sensitive resource IDs.
+ * @returns A safe route template and any relevant permission guidance.
+ */
 const safeRoute = (path: string): SafeRoute => {
   if (/^\/channels\/[^/]+\/messages(?:\?|$)/u.test(path)) {
     return {
@@ -32,7 +36,11 @@ const safeRoute = (path: string): SafeRoute => {
   return { name: "an endpoint" };
 };
 
-/** Resolve known Discord error codes to safe, stable human-readable labels. */
+/**
+ * Resolve known Discord error codes to safe, stable human-readable labels.
+ * @param code - Discord error code to interpret.
+ * @returns A stable label for known codes, or `null` otherwise.
+ */
 const discordErrorMessage = (code: number | undefined): string | null => {
   switch (code) {
     case 50_001: {
@@ -50,6 +58,10 @@ const discordErrorMessage = (code: number | undefined): string | null => {
 /**
  * Describe a Discord REST failure using a templated route and selected error
  * metadata, excluding resource IDs and arbitrary response text.
+ * @param path - Discord API path associated with the failure.
+ * @param status - HTTP status returned by Discord.
+ * @param payload - Optional validated Discord error payload.
+ * @returns A sanitized diagnostic message.
  */
 export const describeDiscordFailure = (
   path: string,

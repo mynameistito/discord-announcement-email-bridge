@@ -9,6 +9,9 @@ import type { Subscription } from "@/domain";
 /**
  * Poll one subscription from its cursor, initializing on first use or
  * classifying and durably enqueueing newly discovered announcements.
+ * @param ports - Repository and Discord operations for polling.
+ * @param subscription - Subscription to poll.
+ * @returns An Effect that initializes or advances the subscription's discovery state.
  */
 export const pollSubscription = (
   ports: PollingPorts,

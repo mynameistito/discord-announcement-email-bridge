@@ -10,6 +10,7 @@ import type { Announcement, Subscription } from "@/domain";
  * Lift one D1 promise into Effect and normalize failures as retryable
  * infrastructure errors.
  * @param operation - The D1 operation to execute lazily.
+ * @returns An Effect that evaluates the operation and maps rejected promises.
  */
 export const d1 = <A>(operation: () => Promise<A>) =>
   Effect.tryPromise({
@@ -17,7 +18,11 @@ export const d1 = <A>(operation: () => Promise<A>) =>
     try: operation,
   });
 
-/** Convert a D1 subscription record into the application domain shape. */
+/**
+ * Convert a D1 subscription record into the application domain shape.
+ * @param row - Database record for the configured subscription.
+ * @returns The application-layer subscription value.
+ */
 const toSubscription = (row: SubscriptionRow): Subscription => ({
   destinationChannelId: row.destination_channel_id,
   destinationGuildId: row.destination_guild_id,
@@ -32,6 +37,11 @@ const toSubscription = (row: SubscriptionRow): Subscription => ({
 /**
  * Persist announcements, recipient delivery rows, and an optional cursor in
  * bounded D1 batches so a failed discovery does not advance the cursor alone.
+ * @param env - Worker bindings including the D1 database.
+ * @param subscription - Subscription associated with this discovery batch.
+ * @param announcements - Verified announcements to persist.
+ * @param cursor - Greatest observed message ID, if one was observed.
+ * @returns An Effect that persists the batch and optional cursor.
  */
 export const persistBatch = (
   env: WorkerEnv,
@@ -91,7 +101,11 @@ export const persistBatch = (
     }
   });
 
-/** Create the polling repository implementation backed by the Worker's D1 DB. */
+/**
+ * Create the polling repository implementation backed by the Worker's D1 DB.
+ * @param env - Worker bindings containing the D1 database.
+ * @returns Repository operations backed by D1.
+ */
 export const makeRepository = (env: WorkerEnv): PollingPorts["repository"] => ({
   cursor: (id) =>
     d1(() =>
@@ -146,7 +160,12 @@ export const makeRepository = (env: WorkerEnv): PollingPorts["repository"] => ({
     persistBatch(env, subscription, announcements, cursor),
 });
 
-/** Disable other subscriptions and upsert the configured active subscription. */
+/**
+ * Disable other subscriptions and upsert the configured active subscription.
+ * @param env - Worker bindings including the D1 database.
+ * @param subscription - Subscription to enable and persist.
+ * @returns An Effect that completes after the D1 batch succeeds.
+ */
 export const ensureSubscription = (
   env: WorkerEnv,
   subscription: Subscription
@@ -172,6 +191,12 @@ export const ensureSubscription = (
 /**
  * Record a failed attempt only while its lease token still owns the delivery.
  * Clears the lease and returns retryable failures to the queue state.
+ * @param env - Worker bindings including the D1 database.
+ * @param id - Delivery row identifier.
+ * @param error - Bounded error detail to persist.
+ * @param retryable - Whether the delivery may be retried.
+ * @param claimToken - Token proving current lease ownership.
+ * @returns An Effect that completes after the guarded update.
  */
 export const updateDeliveryFailure = (
   env: WorkerEnv,
@@ -193,7 +218,12 @@ export const updateDeliveryFailure = (
       .run()
   ).pipe(Effect.asVoid);
 
-/** Mark an unowned or expired delivery as failed after queue retries are spent. */
+/**
+ * Mark an unowned or expired delivery as failed after queue retries are spent.
+ * @param env - Worker bindings including the D1 database.
+ * @param id - Delivery row identifier.
+ * @returns An Effect indicating whether a delivery row was changed.
+ */
 export const markDeadLetter = (env: WorkerEnv, id: string) =>
   d1(() =>
     env.DB.prepare(
@@ -207,6 +237,10 @@ export const markDeadLetter = (env: WorkerEnv, id: string) =>
  * Atomically claim a queued delivery or report its current ownership state.
  * The two-minute lease exceeds Resend's 60-second timeout; an expired lease
  * can be reclaimed after a Worker interruption.
+ * @param env - Worker bindings including the D1 database.
+ * @param id - Delivery row identifier.
+ * @param announcementId - Announcement row associated with the delivery.
+ * @param claimToken - Token to assign as the lease owner.
  * @returns `claimed` for this token, `in_flight` for a live competing lease,
  * or `complete` when no claimable delivery remains.
  */

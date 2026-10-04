@@ -38,6 +38,10 @@ type DecodedPolledMessage =
 /**
  * Set a new subscription cursor to the latest valid message ID without
  * delivering historical announcements from before initial setup.
+ * @param ports - Discord source and cursor repository operations.
+ * @param subscriptionId - Subscription whose cursor is initialized.
+ * @param channelId - Destination channel to inspect.
+ * @returns An Effect that stores the latest valid message ID.
  */
 export const initializeCursor = (
   ports: PollingPorts,
@@ -58,7 +62,11 @@ export const initializeCursor = (
     );
   });
 
-/** Decode one raw Discord payload and retain IDs for safe cursor progression. */
+/**
+ * Decode one raw Discord payload and retain IDs for safe cursor progression.
+ * @param payload - Raw Discord response payload.
+ * @returns A decoded message, malformed crosspost error, or skip result.
+ */
 const decodePolledMessage = (
   payload: UnparsedDiscordMessage
 ): DecodedPolledMessage => {
@@ -94,6 +102,10 @@ const decodePolledMessage = (
 /**
  * Read backward-paginated history newer than a cursor, fail closed on malformed
  * candidate crossposts, and return messages plus the greatest observed ID.
+ * @param ports - Discord source operations used to read message pages.
+ * @param channelId - Destination channel whose history is read.
+ * @param cursor - Last durably processed Discord message ID.
+ * @returns An Effect containing ordered messages and the greatest observed ID.
  */
 export const fetchHistory = (
   ports: PollingPorts,

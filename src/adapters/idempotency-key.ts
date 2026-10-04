@@ -5,6 +5,9 @@ import type { Announcement } from "@/domain";
 /**
  * Create a stable provider idempotency key scoped to one subscription,
  * announcement, and case-insensitive recipient without exposing the address.
+ * @param announcement - Verified announcement being delivered.
+ * @param recipient - Email recipient whose address is hashed into the key.
+ * @returns An Effect containing the stable provider idempotency key.
  */
 export const idempotencyKey = (
   announcement: Announcement,

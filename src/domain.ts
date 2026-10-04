@@ -111,7 +111,13 @@ export interface Announcement {
 export const hasCrosspostFlag = (flags: number): boolean =>
   flags >= 2 && Math.floor(flags / 2) % 2 === 1;
 
-/** Confirm that a message's webhook is the follower for its referenced source. */
+/**
+ * Confirm that a message's webhook is the follower for its referenced source.
+ * @param message - Follower-copy message to validate.
+ * @param webhook - Retrieved webhook metadata, or `null` when missing.
+ * @param reference - Source message reference attached to the copy.
+ * @returns Whether the webhook metadata matches the referenced source.
+ */
 const matchesFollowerWebhook = (
   message: DiscordMessage,
   webhook: FollowerWebhook | null,
@@ -126,7 +132,13 @@ const matchesFollowerWebhook = (
   return webhook.source_channel?.id === reference.channel_id;
 };
 
-/** Confirm that destination and optional configured source IDs match. */
+/**
+ * Confirm that destination and optional configured source IDs match.
+ * @param message - Follower-copy message to validate.
+ * @param subscription - Configured destination and source constraints.
+ * @param reference - Source message reference attached to the copy.
+ * @returns Whether the message matches the configured subscription.
+ */
 const matchesSubscription = (
   message: DiscordMessage,
   subscription: Subscription,
@@ -150,6 +162,9 @@ const matchesSubscription = (
 /**
  * Classify a message only when Discord's crosspost flag, reference, follower
  * webhook metadata, destination, and configured source constraints agree.
+ * @param message - Candidate message returned from the destination channel.
+ * @param webhook - Webhook metadata associated with the candidate message.
+ * @param subscription - Subscription whose constraints must match.
  * @returns The normalized announcement, or `undefined` for an unverified message.
  */
 export const classifyFollowerMessage = (
@@ -182,6 +197,8 @@ export const classifyFollowerMessage = (
 
 /**
  * Compare decimal Discord snowflake identifiers without losing 64-bit precision.
+ * @param left - First decimal snowflake identifier.
+ * @param right - Second decimal snowflake identifier.
  * @returns A negative value, zero, or positive value according to numeric order.
  */
 export const compareSnowflakes = (left: string, right: string): number => {
@@ -196,13 +213,21 @@ export const compareSnowflakes = (left: string, right: string): number => {
   return 0;
 };
 
-/** Return a new message array ordered oldest-first by Discord snowflake ID. */
+/**
+ * Return a new message array ordered oldest-first by Discord snowflake ID.
+ * @param messages - Messages to order.
+ * @returns A new array ordered by ascending snowflake ID.
+ */
 export const oldestFirst = (
   messages: readonly DiscordMessage[]
 ): readonly DiscordMessage[] =>
   messages.toSorted((left, right) => compareSnowflakes(left.id, right.id));
 
-/** Escape HTML metacharacters before inserting untrusted Discord content. */
+/**
+ * Escape HTML metacharacters before inserting untrusted Discord content.
+ * @param value - Untrusted text to escape.
+ * @returns HTML-safe text.
+ */
 const escapeHtml = (value: string): string =>
   value.replaceAll(/[&<>"']/gu, (character) => {
     switch (character) {
@@ -227,7 +252,11 @@ const escapeHtml = (value: string): string =>
     }
   });
 
-/** Allow only HTTP(S) destinations and escape them for safe HTML attributes. */
+/**
+ * Allow only HTTP(S) destinations and escape them for safe HTML attributes.
+ * @param value - URL to validate and escape.
+ * @returns An escaped HTTP(S) URL or `#` for unsupported schemes.
+ */
 const escapeAttribute = (value: string): string => {
   if (!/^https?:\/\//iu.test(value)) {
     return "#";
@@ -235,7 +264,11 @@ const escapeAttribute = (value: string): string => {
   return escapeHtml(value);
 };
 
-/** Render announcement content as HTML, escaping text and validating links. */
+/**
+ * Render announcement content as HTML, escaping text and validating links.
+ * @param announcement - Verified announcement to render.
+ * @returns Safe HTML email body.
+ */
 export const renderHtml = (announcement: Announcement): string => {
   const { message } = announcement;
   const content = escapeHtml(message.content);
@@ -266,7 +299,11 @@ export const renderHtml = (announcement: Announcement): string => {
   return `<main><p><strong>${escapeHtml(message.author.username)}</strong> · ${escapeHtml(message.timestamp)}</p><p>${content}</p>${embeds}<ul>${attachments}</ul><p><a href="https://discord.com/channels/${announcement.sourceGuildId}/${announcement.sourceChannelId}/${announcement.sourceMessageId}">View announcement</a></p></main>`;
 };
 
-/** Render announcement content as a plain-text email with readable sections. */
+/**
+ * Render announcement content as a plain-text email with readable sections.
+ * @param announcement - Verified announcement to render.
+ * @returns Plain-text email body.
+ */
 export const renderText = (announcement: Announcement): string => {
   const { message } = announcement;
   const embeds = message.embeds

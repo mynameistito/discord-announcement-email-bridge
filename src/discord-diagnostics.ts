@@ -1,13 +1,13 @@
 import { Schema } from "effect";
 
 /** Runtime validator for the safe Discord error fields used in diagnostics. */
-export const DiscordErrorPayloadSchema = Schema.Struct({
+const DiscordErrorPayloadSchema = Schema.Struct({
   code: Schema.Number,
   message: Schema.optional(Schema.String),
 });
 
 /** Static type inferred from {@link DiscordErrorPayloadSchema}. */
-export type DiscordErrorPayload = typeof DiscordErrorPayloadSchema.Type;
+type DiscordErrorPayload = typeof DiscordErrorPayloadSchema.Type;
 
 /** Sanitized route metadata that never contains actual Discord resource IDs. */
 interface SafeRoute {

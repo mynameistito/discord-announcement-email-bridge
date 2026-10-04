@@ -60,21 +60,6 @@ export const poll = async (
 };
 
 /**
- * Delegate one already-claimed delivery to the application delivery use case.
- * @param env - Worker bindings required for delivery.
- * @param claimToken - Active delivery lease token.
- * @param deliveryId - Durable delivery row identifier.
- * @param announcementId - Durable announcement row identifier.
- * @returns The delivery Effect.
- */
-export const delivery = (
-  env: WorkerEnv,
-  claimToken: string,
-  deliveryId: string,
-  announcementId: string
-) => deliver(env, claimToken, deliveryId, announcementId);
-
-/**
  * Bind queue processing to environment-backed D1 claims, email delivery,
  * failure recording, and dead-letter handling.
  * @param batch - Queue messages to process.
@@ -96,47 +81,6 @@ export const consumeQueue = (batch: MessageBatch<unknown>, env: WorkerEnv) => {
 };
 
 /**
- * Claim a delivery atomically before running its external email side effect.
- * @param env - Worker bindings including D1.
- * @param deliveryId - Durable delivery row identifier.
- * @param announcementId - Durable announcement row identifier.
- * @param claimToken - Token to assign to the delivery lease.
- * @returns The claim operation Effect.
- */
-export const claimDelivery = (
-  env: WorkerEnv,
-  deliveryId: string,
-  announcementId: string,
-  claimToken: string
-) => claimDeliveryInD1(env, deliveryId, announcementId, claimToken);
-
-/**
- * Record a failed attempt while guarding the update with its claim token.
- * @param env - Worker bindings including D1.
- * @param id - Durable delivery row identifier.
- * @param message - Sanitized failure message.
- * @param retryable - Whether the queue should retry the delivery.
- * @param claimToken - Token proving ownership of the delivery lease.
- * @returns The update Effect.
- */
-export const recordFailure = (
-  env: WorkerEnv,
-  id: string,
-  message: string,
-  retryable: boolean,
-  claimToken: string
-) => updateDeliveryFailure(env, id, message, retryable, claimToken);
-
-/**
- * Mark a delivery failed when the platform moves it to the dead-letter queue.
- * @param env - Worker bindings including D1.
- * @param id - Durable delivery row identifier.
- * @returns An Effect indicating whether a row was marked failed.
- */
-export const failDeadLetter = (env: WorkerEnv, id: string) =>
-  markDeadLetter(env, id);
-
-/**
  * Route an authorized HTTP request through the application admin handlers.
  * @param method - HTTP method of the request.
  * @param pathname - Request path to route.
@@ -148,6 +92,3 @@ export const adminResponse = (
   pathname: string,
   env: WorkerEnv
 ) => createAdminResponse(method, pathname, env, poll);
-
-/** Re-export the safe error renderer for worker queue logging. */
-export { safeError } from "@/application/admin";

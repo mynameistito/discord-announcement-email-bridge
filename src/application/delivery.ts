@@ -16,7 +16,7 @@ const StoredMessageSchema = Schema.fromJsonString(MessageSchema);
  * @param announcement - Verified announcement to summarize.
  * @returns A sanitized subject line of at most 150 characters.
  */
-export const emailSubject = (announcement: Announcement): string => {
+const emailSubject = (announcement: Announcement): string => {
   const title = announcement.message.embeds.find((embed) => embed.title)?.title;
   const safeTitle = (title ?? announcement.message.content)
     .replaceAll(/[\r\n]+/gu, " ")
@@ -159,4 +159,3 @@ interface AnnouncementRow {
   readonly follower_webhook_id: string;
   readonly subscription_id: string;
 }
-export { ApiError } from "@/application/delivery-error";

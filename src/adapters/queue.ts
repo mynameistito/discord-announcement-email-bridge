@@ -12,7 +12,7 @@ const QueuePayloadSchema = Schema.Struct({
 });
 
 /** The ownership outcome returned by the delivery claim boundary. */
-export type DeliveryClaim = "claimed" | "complete" | "in_flight";
+type DeliveryClaim = "claimed" | "complete" | "in_flight";
 
 /** Operations required by the queue adapter to process delivery messages. */
 export interface QueueOperations {

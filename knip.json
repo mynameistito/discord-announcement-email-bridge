@@ -1,0 +1,4 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": ["alchemy.run.ts", "src/worker.ts", "src/__tests__/**/*.test.ts"]
+}

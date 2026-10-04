@@ -43,7 +43,7 @@ const toSubscription = (row: SubscriptionRow): Subscription => ({
  * @param cursor - Greatest observed message ID, if one was observed.
  * @returns An Effect that persists the batch and optional cursor.
  */
-export const persistBatch = (
+const persistBatch = (
   env: WorkerEnv,
   subscription: Subscription,
   announcements: readonly Announcement[],

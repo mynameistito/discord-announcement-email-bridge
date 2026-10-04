@@ -4,8 +4,8 @@ import type { InferEnv } from "alchemy/Cloudflare";
 import { Redacted, String as StringConfig, withDefault } from "effect/Config";
 import { gen, map } from "effect/Effect";
 
-import { DeliveryQueue, DeliveryDeadLetterQueue } from "@/resources";
-import { workerStageConfig } from "@/stage-config";
+import { DeliveryQueue, DeliveryDeadLetterQueue } from "./src/resources.ts";
+import { workerStageConfig } from "./src/stage-config.ts";
 
 declare const process: {
   readonly env: {

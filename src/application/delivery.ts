@@ -2,8 +2,8 @@ import { Effect, Schema } from "effect";
 
 import { d1 } from "@/adapters/d1";
 import { sendEmail } from "@/adapters/resend";
-import { ApiError } from "@/application/delivery-error";
 import type { WorkerEnv } from "@/alchemy.run";
+import { ApiError } from "@/application/delivery-error";
 import { BridgeInfrastructureError } from "@/bridge-infrastructure-error";
 import { MessageSchema, renderHtml, renderText } from "@/domain";
 import type { Announcement } from "@/domain";

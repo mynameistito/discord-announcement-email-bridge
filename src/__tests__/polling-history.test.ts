@@ -67,8 +67,7 @@ describe("polling history pagination", () => {
           }),
       },
       source: {
-        fetchAfter: () =>
-          Effect.succeed([{ raw: { flags: 2, id: "101" } }]),
+        fetchAfter: () => Effect.succeed([{ raw: { flags: 2, id: "101" } }]),
         fetchBefore: () => Effect.succeed([]),
         fetchLatest: () => Effect.succeed([]),
         getWebhook: () => Effect.succeed(null),

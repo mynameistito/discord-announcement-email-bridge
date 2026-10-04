@@ -153,7 +153,11 @@ $env:STAGE = $env:ALCHEMY_STAGE
    Invoke-RestMethod -Method Get -Uri "$url/admin/status" -Headers $headers
    ```
 
-   If status shows a new subscription with no cursor, first confirm the test channel has no unseen test announcements you want delivered, then initialize it with `Invoke-RestMethod -Method Post -Uri "$url/admin/poll" -Headers $headers`. That first poll seeds at the latest observed message and skips history.
+   `/admin/status` reports delivery totals and a global `lastPoll` timestamp; it does not show subscription or cursor state. On a fresh E2E stage with no saved cursor, the first poll creates the subscription, seeds at the latest observed message, and skips history. Only run it after confirming the test channel has no unseen announcements you intend to deliver:
+
+   ```powershell
+   Invoke-RestMethod -Method Post -Uri "$url/admin/poll" -Headers $headers
+   ```
 
 4. Publish one test announcement in the followed source channel and confirm its crosspost appears in the test destination channel. Then invoke `Invoke-RestMethod -Method Post -Uri "$url/admin/poll" -Headers $headers`. **A poll processes all unseen eligible crossposts for enabled subscriptions, not just the announcement you intend to test.** Keep the test destination and recipient isolated accordingly.
 5. Check the test mailbox, Resend delivery logs, and `/admin/status`. Queue delivery is asynchronous; allow pending deliveries to finish. A normal destination-channel message is not a valid test. Do not use `/admin/replay` as a smoke test; it can resend previously failed deliveries.

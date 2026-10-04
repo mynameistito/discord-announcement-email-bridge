@@ -16,7 +16,7 @@ import type { DiscordMessage } from "@/domain";
 const MessageIdSchema = Schema.Struct({ id: Schema.String });
 const PotentialCrosspostSchema = Schema.Struct({
   flags: Schema.Number,
-  webhook_id: Schema.String,
+  webhook_id: Schema.optional(Schema.String),
 });
 
 type DecodedPolledMessage =

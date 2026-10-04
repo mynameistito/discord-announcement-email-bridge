@@ -50,4 +50,36 @@ describe("polling history pagination", () => {
     ).rejects.toThrow("network error");
     expect(persisted).toBeFalsy();
   });
+
+  it("does not advance past an incomplete crosspost missing its webhook", async () => {
+    let persisted = false;
+    const ports: PollingPorts = {
+      enqueue: () => Effect.void,
+      repository: {
+        cursor: () => Effect.succeed("100"),
+        enabledSubscriptions: () => Effect.succeed([subscription]),
+        initializeCursor: () => Effect.void,
+        markEnqueued: () => Effect.void,
+        pendingDeliveries: () => Effect.succeed([]),
+        persistDiscoveryBatch: () =>
+          Effect.sync(() => {
+            persisted = true;
+          }),
+      },
+      source: {
+        fetchAfter: () =>
+          Effect.succeed([{ raw: { flags: 2, id: "101" } }]),
+        fetchBefore: () => Effect.succeed([]),
+        fetchLatest: () => Effect.succeed([]),
+        getWebhook: () => Effect.succeed(null),
+      },
+    };
+
+    await expect(
+      Effect.runPromise(
+        pollAll.pipe(Effect.provide(pollingServiceLayer(ports)))
+      )
+    ).rejects.toThrow("malformed crosspost candidate");
+    expect(persisted).toBeFalsy();
+  });
 });

@@ -104,7 +104,7 @@ export const adminResponse = async (
     return Effect.runPromise(
       d1(() =>
         env.DB.prepare(
-          "SELECT (SELECT MAX(updated_at) FROM channel_cursors) AS last_poll, (SELECT COUNT(*) FROM deliveries WHERE status = 'pending') AS pending, (SELECT COUNT(*) FROM deliveries WHERE status = 'failed') AS failed"
+          "SELECT (SELECT MAX(updated_at) FROM channel_cursors) AS last_poll, (SELECT COUNT(*) FROM deliveries WHERE status = 'pending') AS pending, (SELECT COUNT(*) FROM deliveries WHERE status = 'failed') AS failed, (SELECT COUNT(*) FROM deliveries WHERE status = 'sent') AS sent"
         ).first<StatusRow>()
       ).pipe(
         Effect.match({
@@ -115,6 +115,7 @@ export const adminResponse = async (
               failedDeliveries: row?.failed ?? 0,
               lastPoll: row?.last_poll ?? null,
               pendingDeliveries: row?.pending ?? 0,
+              sentDeliveries: row?.sent ?? 0,
             }),
         })
       )
@@ -182,4 +183,5 @@ interface StatusRow {
   readonly last_poll: string | null;
   readonly pending: number;
   readonly failed: number;
+  readonly sent: number;
 }

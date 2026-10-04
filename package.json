@@ -22,6 +22,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "e2e": "bun scripts/e2e.ts",
     "knip": "knip",
     "check": "ultracite check",
     "format": "ultracite fix",

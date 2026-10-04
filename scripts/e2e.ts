@@ -28,10 +28,13 @@ interface DiscordMessage {
 interface WorkerStatus {
   readonly sentDeliveries: number;
   readonly failedDeliveries: number;
+  readonly targetSentDeliveries?: number;
+  readonly targetFailedDeliveries?: number;
 }
 
 type LogTone = "info" | "success" | "warning" | "failure";
 type ShutdownSignal = "SIGINT" | "SIGTERM";
+type HeadersInput = NonNullable<RequestInit["headers"]>;
 
 const DiscordErrorSchema = Schema.Struct({
   code: Schema.Number,
@@ -56,8 +59,8 @@ const profile =
 
 const token = process.env.DISCORD_PREVIEW_BOT_TOKEN;
 const guildId = process.env.DISCORD_GUILD_ID;
-const sourceChannelId = process.env.DISCORD_E2E_ANNONCEMENT_CHANNEL_ID;
-const receiverChannelId = process.env.DISCORD_E2E_RECIEVER_CHANNEL_ID;
+const sourceChannelId = process.env.DISCORD_E2E_ANNOUNCEMENT_CHANNEL_ID;
+const receiverChannelId = process.env.DISCORD_E2E_RECEIVER_CHANNEL_ID;
 const recipient = process.env.EMAIL_TO;
 const resendKey = process.env.RESEND_PREVIEW_API_KEY;
 const senderName = process.env.EMAIL_FROM_NAME;
@@ -66,8 +69,8 @@ const adminToken = process.env.ADMIN_PREVIEW_TOKEN;
 
 const required = {
   ADMIN_PREVIEW_TOKEN: adminToken,
-  DISCORD_E2E_ANNONCEMENT_CHANNEL_ID: sourceChannelId,
-  DISCORD_E2E_RECIEVER_CHANNEL_ID: receiverChannelId,
+  DISCORD_E2E_ANNOUNCEMENT_CHANNEL_ID: sourceChannelId,
+  DISCORD_E2E_RECEIVER_CHANNEL_ID: receiverChannelId,
   DISCORD_GUILD_ID: guildId,
   DISCORD_PREVIEW_BOT_TOKEN: token,
   EMAIL_FROM_EMAIL: senderEmail,
@@ -152,7 +155,7 @@ const request = (
   });
 
 const waitUntil = <T>(
-  operation: () => Promise<T>,
+  operation: (signal: AbortSignal) => Promise<T>,
   isComplete: (value: T) => boolean,
   interval: number,
   timeout: number,
@@ -163,16 +166,28 @@ const waitUntil = <T>(
   const poll = async (): Promise<T> => {
     shutdownSignal.throwIfAborted();
 
-    const result = await operation();
-
-    if (isComplete(result)) {
-      return result;
-    }
-
     const remaining = deadline - performance.now();
 
     if (remaining <= 0) {
       throw new Error(failureMessage);
+    }
+
+    const timeoutSignal = AbortSignal.timeout(remaining);
+    const signal = AbortSignal.any([shutdownSignal, timeoutSignal]);
+    let result: T;
+
+    try {
+      result = await operation(signal);
+    } catch (error) {
+      if (timeoutSignal.aborted && !shutdownSignal.aborted) {
+        throw new Error(failureMessage, { cause: error });
+      }
+
+      throw error;
+    }
+
+    if (isComplete(result)) {
+      return result;
     }
 
     await pause(Math.min(interval, remaining), undefined, {
@@ -262,13 +277,26 @@ const jsonRequest = async <T>(
   return (await response.json()) as T;
 };
 
-const discordHeaders: HeadersInit = {
+const discordHeaders: HeadersInput = {
   Authorization: `Bot ${token}`,
   "Content-Type": "application/json",
 };
 
 const hasExited = (child: ChildProcess): boolean =>
   child.exitCode !== null || child.signalCode !== null;
+
+const hasRunningProcessGroup = (child: ChildProcess): boolean => {
+  if (process.platform === "win32" || !child.pid) {
+    return false;
+  }
+
+  try {
+    process.kill(-child.pid, 0);
+    return true;
+  } catch (error) {
+    return error instanceof Error && "code" in error && error.code === "EPERM";
+  }
+};
 
 const waitForExit = async (
   child: ChildProcess,
@@ -299,29 +327,57 @@ const releaseChildStreams = (child: ChildProcess): void => {
   child.stdin?.destroy();
 };
 
-const stopLocalDev = async (dev: ChildProcess): Promise<void> => {
-  if (hasExited(dev)) {
-    releaseChildStreams(dev);
+const signalProcessTree = async (
+  child: ChildProcess,
+  signal: NodeJS.Signals
+): Promise<void> => {
+  if (process.platform === "win32") {
+    if (!child.pid) {
+      return;
+    }
+
+    const args = ["/PID", String(child.pid), "/T"];
+
+    if (signal === "SIGKILL") {
+      args.push("/F");
+    }
+
+    const taskkillPath = `${process.env.SystemRoot ?? "C:\\Windows"}\\System32\\taskkill.exe`;
+    const taskkill = spawn(taskkillPath, args, {
+      stdio: "ignore",
+      windowsHide: true,
+    });
+
+    await once(taskkill, "exit");
     return;
   }
 
+  if (child.pid) {
+    try {
+      process.kill(-child.pid, signal);
+      return;
+    } catch {
+      // Fall back to signaling the direct child if its process group is gone.
+    }
+  }
+
+  child.kill(signal);
+};
+
+const stopLocalDev = async (dev: ChildProcess): Promise<void> => {
   log("Stopping local Alchemy dev...");
 
-  const terminationRequested = dev.kill("SIGTERM");
-
-  if (!terminationRequested) {
-    log("Could not send SIGTERM to local Alchemy dev.", "warning");
-  }
+  await signalProcessTree(dev, "SIGTERM");
 
   const exitedGracefully = await waitForExit(dev, 3000);
 
-  if (!exitedGracefully && !hasExited(dev)) {
+  if ((!exitedGracefully && !hasExited(dev)) || hasRunningProcessGroup(dev)) {
     log(
       "Local Alchemy dev did not stop after SIGTERM; forcing shutdown...",
       "warning"
     );
 
-    dev.kill("SIGKILL");
+    await signalProcessTree(dev, "SIGKILL");
 
     await waitForExit(dev, 2000);
   }
@@ -364,6 +420,7 @@ const startLocalDev = async (
     process.execPath,
     ["run", "dev", ...(profileName ? ["--profile", profileName] : [])],
     {
+      detached: process.platform !== "win32",
       env: {
         ...process.env,
         ADMIN_TOKEN: adminToken,
@@ -405,7 +462,7 @@ const startLocalDev = async (
 
   try {
     const ready = await waitUntil(
-      async () => {
+      async (signal) => {
         if (spawnError) {
           throw spawnError;
         }
@@ -414,10 +471,17 @@ const startLocalDev = async (
           throw new Error(`Alchemy dev exited before ready:\n${output}`);
         }
 
-        const url = foundUrl ?? localWorkerUrl;
+        const url = foundUrl;
+
+        if (!url) {
+          return {
+            ready: false,
+            url: localWorkerUrl,
+          };
+        }
 
         try {
-          const response = await request(`${url}/healthz`);
+          const response = await request(`${url}/healthz`, { signal });
 
           return {
             ready: response.ok,
@@ -506,11 +570,12 @@ const assertChannels = async (): Promise<void> => {
 
 const waitForCrosspost = async (messageId: string): Promise<void> => {
   await waitUntil(
-    () =>
+    (signal) =>
       jsonRequest<readonly DiscordMessage[]>(
         `${discordApi}/channels/${receiverChannelId}/messages?limit=100`,
         {
           headers: discordHeaders,
+          signal,
         },
         "Read receiver messages"
       ),
@@ -526,13 +591,25 @@ const waitForCrosspost = async (messageId: string): Promise<void> => {
 
 const deliveryStatus = async (
   workerUrl: string,
-  headers: HeadersInit
+  headers: HeadersInput,
+  signal?: AbortSignal,
+  sourceMessageId?: string
 ): Promise<WorkerStatus> => {
+  const statusUrl = new URL(`${workerUrl}/admin/status`);
+
+  if (sourceMessageId) {
+    statusUrl.searchParams.set("sourceMessageId", sourceMessageId);
+  }
+
+  const statusInit: RequestInit = { headers };
+
+  if (signal) {
+    statusInit.signal = signal;
+  }
+
   const response = await jsonRequest<WorkerStatus>(
-    `${workerUrl}/admin/status`,
-    {
-      headers,
-    },
+    statusUrl.toString(),
+    statusInit,
     "Read Worker delivery status"
   );
 
@@ -550,24 +627,67 @@ const deliveryStatus = async (
 
 const waitForDelivery = async (
   workerUrl: string,
-  headers: HeadersInit,
-  previousSentCount: number,
-  previousFailedCount: number
+  headers: HeadersInput,
+  sourceMessageId: string
 ): Promise<void> => {
   await waitUntil(
-    async () => {
-      const status = await deliveryStatus(workerUrl, headers);
+    async (signal) => {
+      const status = await deliveryStatus(
+        workerUrl,
+        headers,
+        signal,
+        sourceMessageId
+      );
 
-      if (status.failedDeliveries > previousFailedCount) {
+      if ((status.targetFailedDeliveries ?? 0) > 0) {
         throw new Error("Worker recorded a failed email delivery");
       }
 
       return status;
     },
-    (status) => status.sentDeliveries > previousSentCount,
+    (status) => (status.targetSentDeliveries ?? 0) > 0,
     5000,
     180_000,
     "Worker did not record a successful email delivery within 180 seconds"
+  );
+};
+
+const waitForWorkerReady = async (workerUrl: string): Promise<void> => {
+  let base = workerUrl;
+
+  while (base.endsWith("/")) {
+    base = base.slice(0, -1);
+  }
+  const healthHeaders = new Headers();
+  const accessClientId = process.env.CF_ACCESS_CLIENT_ID;
+  const accessClientSecret = process.env.CF_ACCESS_CLIENT_SECRET;
+
+  if (accessClientId && accessClientSecret) {
+    healthHeaders.set("CF-Access-Client-Id", accessClientId);
+    healthHeaders.set("CF-Access-Client-Secret", accessClientSecret);
+  }
+
+  await waitUntil(
+    async (signal) => {
+      try {
+        const response = await request(`${base}/healthz`, {
+          headers: healthHeaders,
+          signal,
+        });
+
+        return response.ok;
+      } catch (error) {
+        if (shutdownSignal.aborted) {
+          throw error;
+        }
+
+        return false;
+      }
+    },
+    Boolean,
+    1000,
+    60_000,
+    "Worker did not become healthy within 60 seconds"
   );
 };
 
@@ -611,8 +731,6 @@ const run = async (workerUrl: string): Promise<void> => {
   if (baseline.status !== 202) {
     throw new Error(`Baseline Worker poll failed (HTTP ${baseline.status})`);
   }
-
-  const initialStatus = await deliveryStatus(base, adminHeaders);
 
   const marker = `E2E ${crypto.randomUUID()}`;
 
@@ -664,12 +782,7 @@ const run = async (workerUrl: string): Promise<void> => {
 
   log("Poll accepted; waiting for the queued email delivery...");
 
-  await waitForDelivery(
-    base,
-    adminHeaders,
-    initialStatus.sentDeliveries,
-    initialStatus.failedDeliveries
-  );
+  await waitForDelivery(base, adminHeaders, created.id);
 
   log(
     `E2E passed. Discord message ${created.id}; Worker recorded a successful Resend delivery.`,
@@ -690,6 +803,7 @@ const main = async (): Promise<number> => {
         throw new Error("E2E_WORKER_URL is required when E2E_MODE=remote");
       }
 
+      await waitForWorkerReady(url);
       await run(url);
     } else {
       const local = await startLocalDev(profile);

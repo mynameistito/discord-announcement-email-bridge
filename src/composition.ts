@@ -85,10 +85,12 @@ export const consumeQueue = (batch: MessageBatch<unknown>, env: WorkerEnv) => {
  * @param method - HTTP method of the request.
  * @param pathname - Request path to route.
  * @param env - Worker bindings for the admin operation.
+ * @param sourceMessageId - Optional source message to scope delivery status to.
  * @returns The selected admin HTTP response.
  */
 export const adminResponse = (
   method: string,
   pathname: string,
-  env: WorkerEnv
-) => createAdminResponse(method, pathname, env, poll);
+  env: WorkerEnv,
+  sourceMessageId?: string
+) => createAdminResponse(method, pathname, env, poll, sourceMessageId);

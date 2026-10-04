@@ -73,13 +73,15 @@ const pollResponse = async (
  * @param pathname - Request path to route.
  * @param env - Worker bindings for the selected operation.
  * @param runPoll - Poll implementation used by poll and replay routes.
+ * @param sourceMessageId - Optional source message to scope delivery status to.
  * @returns The response for the matched route or a 404 response.
  */
 export const adminResponse = async (
   method: string,
   pathname: string,
   env: WorkerEnv,
-  runPoll: (env: WorkerEnv) => Promise<PollResult>
+  runPoll: (env: WorkerEnv) => Promise<PollResult>,
+  sourceMessageId?: string
 ): Promise<Response> => {
   if (method === "POST" && pathname === "/admin/poll") {
     return pollResponse(env, runPoll);
@@ -104,19 +106,31 @@ export const adminResponse = async (
     return Effect.runPromise(
       d1(() =>
         env.DB.prepare(
-          "SELECT (SELECT MAX(updated_at) FROM channel_cursors) AS last_poll, (SELECT COUNT(*) FROM deliveries WHERE status = 'pending') AS pending, (SELECT COUNT(*) FROM deliveries WHERE status = 'failed') AS failed, (SELECT COUNT(*) FROM deliveries WHERE status = 'sent') AS sent"
-        ).first<StatusRow>()
+          sourceMessageId
+            ? "SELECT (SELECT MAX(updated_at) FROM channel_cursors) AS last_poll, (SELECT COUNT(*) FROM deliveries WHERE status = 'pending') AS pending, (SELECT COUNT(*) FROM deliveries WHERE status = 'failed') AS failed, (SELECT COUNT(*) FROM deliveries WHERE status = 'sent') AS sent, (SELECT COUNT(*) FROM deliveries d JOIN announcements a ON a.id = d.announcement_id WHERE a.source_message_id = ? AND d.status = 'sent') AS target_sent, (SELECT COUNT(*) FROM deliveries d JOIN announcements a ON a.id = d.announcement_id WHERE a.source_message_id = ? AND d.status = 'failed') AS target_failed"
+            : "SELECT (SELECT MAX(updated_at) FROM channel_cursors) AS last_poll, (SELECT COUNT(*) FROM deliveries WHERE status = 'pending') AS pending, (SELECT COUNT(*) FROM deliveries WHERE status = 'failed') AS failed, (SELECT COUNT(*) FROM deliveries WHERE status = 'sent') AS sent"
+        )
+          .bind(...(sourceMessageId ? [sourceMessageId, sourceMessageId] : []))
+          .first<StatusRow>()
       ).pipe(
         Effect.match({
           onFailure: () =>
             Response.json({ error: "status_unavailable" }, { status: 503 }),
-          onSuccess: (row) =>
-            Response.json({
+          onSuccess: (row) => {
+            const response: StatusResponse = {
               failedDeliveries: row?.failed ?? 0,
               lastPoll: row?.last_poll ?? null,
               pendingDeliveries: row?.pending ?? 0,
               sentDeliveries: row?.sent ?? 0,
-            }),
+            };
+
+            if (sourceMessageId) {
+              response.targetFailedDeliveries = row?.target_failed ?? 0;
+              response.targetSentDeliveries = row?.target_sent ?? 0;
+            }
+
+            return Response.json(response);
+          },
         })
       )
     );
@@ -184,4 +198,15 @@ interface StatusRow {
   readonly pending: number;
   readonly failed: number;
   readonly sent: number;
+  readonly target_failed?: number;
+  readonly target_sent?: number;
+}
+
+interface StatusResponse {
+  readonly failedDeliveries: number;
+  readonly lastPoll: string | null;
+  readonly pendingDeliveries: number;
+  readonly sentDeliveries: number;
+  targetFailedDeliveries?: number;
+  targetSentDeliveries?: number;
 }

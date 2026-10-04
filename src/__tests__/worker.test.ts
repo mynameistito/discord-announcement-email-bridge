@@ -6,6 +6,7 @@ import worker from "../worker";
 describe("Worker health endpoint", () => {
   it("returns a secret-free stage and version response", async () => {
     // Fake secrets make this test fail if /healthz exposes secret bindings.
+    // SAFETY: /healthz reads only BUILD_VERSION and STAGE; the other values are test placeholders.
     const env = {
       ADMIN_TOKEN: "test-admin-token",
       BUILD_VERSION: "test-sha",

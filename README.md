@@ -148,11 +148,14 @@ $env:STAGE = $env:ALCHEMY_STAGE
    ```powershell
    $url = Read-Host "Non-production Worker URL"
    $headers = @{ Authorization = "Bearer $env:ADMIN_TOKEN" }
+   $healthHeaders = @{}
    if ($env:CF_ACCESS_CLIENT_ID -and $env:CF_ACCESS_CLIENT_SECRET) {
      $headers["CF-Access-Client-Id"] = $env:CF_ACCESS_CLIENT_ID
      $headers["CF-Access-Client-Secret"] = $env:CF_ACCESS_CLIENT_SECRET
+     $healthHeaders["CF-Access-Client-Id"] = $env:CF_ACCESS_CLIENT_ID
+     $healthHeaders["CF-Access-Client-Secret"] = $env:CF_ACCESS_CLIENT_SECRET
    }
-   Invoke-RestMethod -Method Get -Uri "$url/healthz"
+   Invoke-RestMethod -Method Get -Uri "$url/healthz" -Headers $healthHeaders
    Invoke-RestMethod -Method Get -Uri "$url/admin/status" -Headers $headers
    ```
 
@@ -179,6 +182,7 @@ if ($LASTEXITCODE -ne 0) {
   Remove-Item "Env:$_" -ErrorAction SilentlyContinue
 }
 Remove-Variable headers -ErrorAction SilentlyContinue
+Remove-Variable healthHeaders -ErrorAction SilentlyContinue
 ```
 
 PR CI has no credentials and does not run the poll or send email. It tests the secret-free `/healthz` handler and builds the Worker artifact. The pinned `mynameistito/alchemy-deploy` action does not expose its resolved preview URL as an output; its configured URL pattern is only used internally for deployment reporting. Therefore CI does not claim to smoke-test the deployed PR runtime. Adding that safely requires a stable URL output or another trusted way to resolve the URL from the deployment action.

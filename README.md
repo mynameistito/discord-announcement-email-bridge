@@ -9,7 +9,25 @@ A Cloudflare Worker polls a Discord Announcement Channel once a minute, verifies
 - A Discord bot installed in the destination guild with `VIEW_CHANNEL`, `READ_MESSAGE_HISTORY`, `MANAGE_WEBHOOKS`, and the privileged `MESSAGE_CONTENT` intent enabled in the Developer Portal
 - A Resend account and a verified sender domain
 
-The bot needs access to the destination Announcement Channel and each followed source channel's webhook metadata. Do not grant `MANAGE_WEBHOOKS` unless strict Channel Follower verification is required; without it, this application does not send mail because `webhook_id` alone is not sufficient proof.
+The bot must be able to read the destination channel and look up its Channel Follower webhook metadata. This app uses strict webhook verification, so `MANAGE_WEBHOOKS` is required; it will not send mail based on `webhook_id` alone. Grant the permission only where the bot needs it, and do not grant Administrator.
+
+## Invite the bot
+
+1. In the [Discord Developer Portal](https://discord.com/developers/applications), open the bot application. Under **Bot → Privileged Gateway Intents**, enable **Message Content Intent**. The Worker polls Discord's REST API; it does not need a Gateway connection.
+2. Open **OAuth2 → URL Generator**. Select the `bot` scope. Under **Bot Permissions**, select **View Channels**, **Read Message History**, and **Manage Webhooks**. Do not select `Administrator` or `applications.commands`. The equivalent guild-install URL uses permission value `536937472`:
+
+   ```powershell
+   $clientId = "<APPLICATION_CLIENT_ID>" # Developer Portal → General Information → Application ID
+   $inviteUrl = "https://discord.com/oauth2/authorize?client_id=$clientId&permissions=536937472&integration_type=0&scope=bot"
+   Start-Process $inviteUrl
+   ```
+
+   Replace the placeholder with the Application ID, then choose and authorize the destination server.
+
+3. In that server, make sure the bot can view the channel that will receive followed announcements. Apply `View Channel`, `Read Message History`, and `Manage Webhooks` there. `Manage Webhooks` is a powerful permission; limit it to the destination channel if your server setup allows it.
+4. Put the bot's token in the deployment secret `DISCORD_BOT_TOKEN` (for GitHub deployments, the `discord-announcement-email-bridge` item in the `github-actions` 1Password vault). Never put the token in source control or share it in chat. Redeploy after changing the token or either configured Discord ID; the Worker does not read 1Password at runtime.
+5. Enable Discord **Developer Mode** and copy the destination server and channel IDs into `DISCORD_GUILD_ID` and `DISCORD_TARGET_CHANNEL_ID`. These IDs must describe the guild and channel where the followed copies arrive.
+6. In the source server's Announcement Channel, use **Follow** and select the destination server and channel configured above. The bot only processes verified Channel Follower crossposts that appear in this destination channel; an ordinary message posted there is ignored.
 
 ## Configure
 
@@ -81,5 +99,52 @@ Never use a production profile or stage for preview builds. Only the `prod` stag
 - `POST /admin/replay` resets terminal failed deliveries to pending and queues them again. Review the failure cause before replaying; Resend idempotency keys are retained for 24 hours, while D1 remains the long-term deduplication source.
 
 Logs contain event names, delivery IDs, and sanitized error messages; do not add email addresses, message contents, or tokens to logs. An edited Discord message does not trigger a new email. A deleted message cannot recall mail already sent.
+
+### End-to-end smoke test
+
+The production `prod` stage polls every minute and uses the production `RESEND_API_KEY` and `EMAIL_TO`. A successful test sends a real email. Before testing production, confirm `EMAIL_TO` is a test mailbox you control and `EMAIL_FROM_EMAIL` is a verified sender. If either value changes in 1Password, redeploy so the Worker receives the updated binding.
+
+1. Confirm the bot is in the destination server, can read the configured destination channel, and can access its follower webhook metadata. Confirm the source Announcement Channel is followed into that destination.
+2. Authenticate to Cloudflare Access for the Worker hostname. Admin calls also require `Authorization: Bearer <ADMIN_TOKEN>`; Access and the Worker bearer token are separate checks. For command-line/API-client testing, use a Cloudflare Access service token:
+   - In **Cloudflare Zero Trust → Access → Service Auth → Service Tokens**, create a token and copy its Client ID and Client Secret into a password manager. The secret is shown only once.
+   - In **Access → Applications**, open the application protecting the Worker hostname and add a **Service Auth** policy that includes this service token. Keep the existing interactive policy; do not make the Worker public or add a Bypass policy.
+   - In the `discord-announcement-email-bridge` item in the `github-actions` 1Password vault, add `CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET` fields for this local test client. Keep the service token and `ADMIN_TOKEN` in 1Password; neither is a Worker code change, and the Access fields are not deployment bindings.
+3. Check `GET /admin/status` before testing. Only a brand-new subscription with no saved cursor gets a baseline on its first poll; that poll seeds at the newest message and skips history. Production may already have an initialized cursor. On an existing subscription, a poll processes all unseen valid crossposts and can queue real email, so it is not a harmless baseline.
+4. Publish a new test announcement in the followed source channel. Confirm its crosspost appears in the configured destination channel, then wait up to one minute for the Cron Trigger. If you manually call `POST /admin/poll`, do so only after the test crosspost appears and expect it to process every unseen valid crosspost, not only the test.
+5. Check the test mailbox and Resend delivery logs. `GET /admin/status` reports `lastPoll`, `pendingDeliveries`, and `failedDeliveries`; queue delivery is asynchronous, so allow time for pending deliveries to finish. A normal message in the destination channel is not a valid test.
+
+Install and sign in to the 1Password CLI (`op`) first. Then load the values from the existing 1Password item into this PowerShell session. `ADMIN_TOKEN` is already a deployment field; add the two `CF_ACCESS_*` fields as described above. The commands print no secret values:
+
+```powershell
+$item = "op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4"
+$env:ADMIN_TOKEN = op read "$item/ADMIN_TOKEN"
+$env:CF_ACCESS_CLIENT_ID = op read "$item/CF_ACCESS_CLIENT_ID"
+$env:CF_ACCESS_CLIENT_SECRET = op read "$item/CF_ACCESS_CLIENT_SECRET"
+
+$url = "https://discord-announcement-email-bridge-prod.mynameistito.workers.dev"
+$headers = @{ Authorization = "Bearer $env:ADMIN_TOKEN" }
+$headers["CF-Access-Client-Id"] = $env:CF_ACCESS_CLIENT_ID
+$headers["CF-Access-Client-Secret"] = $env:CF_ACCESS_CLIENT_SECRET
+
+Invoke-RestMethod -Method Get -Uri "$url/admin/status" -Headers $headers
+```
+
+For a brand-new subscription only, run this once before publishing to seed the cursor, and only when there are no unseen announcements you expect to deliver. For an existing production subscription, skip the baseline poll. After the test crosspost appears, you can force a poll with:
+
+```powershell
+Invoke-RestMethod -Method Post -Uri "$url/admin/poll" -Headers $headers
+```
+
+Or skip the manual poll and wait for production's next scheduled poll.
+
+When finished, remove the credentials from the current shell:
+
+```powershell
+"ADMIN_TOKEN", "CF_ACCESS_CLIENT_ID", "CF_ACCESS_CLIENT_SECRET" | ForEach-Object {
+  Remove-Item "Env:$_" -ErrorAction SilentlyContinue
+}
+```
+
+Do not use `/admin/replay` as a smoke test; it requeues failed deliveries and may send email again.
 
 See [ADR 0001](docs/adr/0001-polling-and-durable-delivery.md) for the polling, classification, and delivery design.

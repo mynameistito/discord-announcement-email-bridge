@@ -2,6 +2,7 @@ import { Effect, Schema } from "effect";
 
 import { d1 } from "@/adapters/d1";
 import { sendEmail } from "@/adapters/resend";
+import { ApiError } from "@/application/delivery-error";
 import type { WorkerEnv } from "@/alchemy.run";
 import { BridgeInfrastructureError } from "@/bridge-infrastructure-error";
 import { MessageSchema, renderHtml, renderText } from "@/domain";
@@ -77,6 +78,11 @@ export const deliver = (
       sourceMessageId: row.source_message_id,
       subscriptionId: row.subscription_id,
     };
+    if (!env.EMAIL_FROM_NAME.trim() || !env.EMAIL_FROM_EMAIL.trim()) {
+      return yield* Effect.fail(
+        new ApiError("Email sender configuration is incomplete", 500, false)
+      );
+    }
     const response = yield* sendEmail(
       env,
       {

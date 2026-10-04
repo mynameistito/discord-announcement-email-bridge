@@ -37,7 +37,6 @@ const toDiscordApiError = (cause: unknown): DiscordApiError => {
   const error = Schema.decodeUnknownOption(
     Schema.Struct({
       _tag: Schema.String,
-      message: Schema.optional(Schema.String),
     })
   )(cause);
   const status =
@@ -49,9 +48,7 @@ const toDiscordApiError = (cause: unknown): DiscordApiError => {
     safeStatus === 429 ||
     safeStatus >= 500;
   return new DiscordApiError(
-    error._tag === "Some" && error.value.message
-      ? error.value.message.slice(0, 300)
-      : "Discord REST request failed",
+    `Discord REST request failed (HTTP ${safeStatus})`,
     safeStatus,
     retryable
   );

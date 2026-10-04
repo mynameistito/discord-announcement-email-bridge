@@ -4,18 +4,26 @@ import { d1, ensureSubscription } from "@/adapters/d1";
 import type { WorkerEnv } from "@/alchemy.run";
 import { BridgeInfrastructureError } from "@/bridge-infrastructure-error";
 
+/** Minimal success contract shared by poll orchestration and admin routes. */
 interface PollResult {
   readonly ok: boolean;
   readonly error?: string;
 }
 
-export const healthResponse = (env: WorkerEnv) =>
+/** Build the non-sensitive health payload exposed to platform probes. */
+export const healthResponse = (
+  env: Pick<WorkerEnv, "BUILD_VERSION" | "STAGE">
+) =>
   Response.json({
     stage: env.STAGE ?? "local",
     status: "ok",
     version: env.BUILD_VERSION ?? "development",
   });
 
+/**
+ * Validate a Bearer token using fixed-length SHA-256 digests and a
+ * timing-safe comparison to avoid leaking token matches through timing.
+ */
 export const authorized = async (
   request: Request,
   token: string
@@ -35,6 +43,7 @@ export const authorized = async (
   );
 };
 
+/** Run one poll and translate its outcome into the admin HTTP response. */
 const pollResponse = async (
   env: WorkerEnv,
   runPoll: (env: WorkerEnv) => Promise<PollResult>
@@ -45,6 +54,10 @@ const pollResponse = async (
     : Response.json({ error: "poll_failed" }, { status: 503 });
 };
 
+/**
+ * Route authorized admin operations for polling, replay, and delivery status.
+ * Unknown paths and methods return a 404 without exposing internal failures.
+ */
 export const adminResponse = async (
   method: string,
   pathname: string,
@@ -93,6 +106,7 @@ export const adminResponse = async (
   return new Response("Not Found", { status: 404 });
 };
 
+/** Build a subscription from required Worker bindings, if fully configured. */
 export const subscriptionFromEnv = (env: WorkerEnv) => {
   if (
     !env.DISCORD_GUILD_ID ||
@@ -115,11 +129,16 @@ export const subscriptionFromEnv = (env: WorkerEnv) => {
   };
 };
 
+/** Persist the active environment-derived subscription before polling. */
 export const seedSubscription = (
   env: WorkerEnv,
   subscription: NonNullable<ReturnType<typeof subscriptionFromEnv>>
 ) => Effect.runPromiseExit(ensureSubscription(env, subscription));
 
+/**
+ * Produce a bounded error string without serializing secrets or arbitrary
+ * objects from failed Effects.
+ */
 export const safeError = (cause: Cause.Cause<unknown>): string => {
   const failure = Cause.findErrorOption(cause);
   if (failure._tag === "Some") {
@@ -133,6 +152,7 @@ export const safeError = (cause: Cause.Cause<unknown>): string => {
   return Cause.pretty(cause).slice(0, 300);
 };
 
+/** D1 aggregate row used by the admin delivery status endpoint. */
 interface StatusRow {
   readonly last_poll: string | null;
   readonly pending: number;

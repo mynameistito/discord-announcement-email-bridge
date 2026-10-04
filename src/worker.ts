@@ -1,9 +1,10 @@
-import { processQueue } from "@/adapters/queue";
 import type { WorkerEnv } from "@/alchemy.run";
 import { healthResponse, authorized } from "@/application/admin";
-import { adminResponse, poll } from "@/composition";
+import { adminResponse, consumeQueue, poll } from "@/composition";
 
+/** Cloudflare Worker entry point for HTTP, queue, and scheduled events. */
 const worker = {
+  /** Route health and authenticated admin HTTP requests. */
   async fetch(request: Request, env: WorkerEnv): Promise<Response> {
     const url = new URL(request.url);
     if (request.method === "GET" && url.pathname === "/healthz") {
@@ -18,10 +19,12 @@ const worker = {
     return adminResponse(request.method, url.pathname, env);
   },
 
+  /** Delegate a delivery queue batch to the claim-aware queue consumer. */
   async queue(batch: MessageBatch<unknown>, env: WorkerEnv): Promise<void> {
-    await processQueue(batch, env);
+    await consumeQueue(batch, env);
   },
 
+  /** Poll enabled subscriptions when the production cron fires. */
   async scheduled(
     _controller: ScheduledController,
     env: WorkerEnv

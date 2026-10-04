@@ -2,10 +2,10 @@ import { Effect } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { sendEmail } from "@/adapters/resend";
-import type { WorkerEnv } from "@/alchemy.run";
 
-// SAFETY: sendEmail reads only RESEND_API_KEY from this partial test binding.
-const env = { RESEND_API_KEY: "test-resend-key" } as WorkerEnv;
+/** Minimal provider binding required by the Resend adapter contract. */
+const env = { RESEND_API_KEY: "test-resend-key" };
+/** Representative rendered email sent by the provider adapter tests. */
 const payload = {
   from: "Bridge <bridge@example.test>",
   html: "<p>Update</p>",

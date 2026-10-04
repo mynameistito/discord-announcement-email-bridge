@@ -3,19 +3,45 @@ import { Cause, Effect, Schema } from "effect";
 import type { WorkerEnv } from "@/alchemy.run";
 import { ApiError } from "@/application/delivery-error";
 import { BridgeInfrastructureError } from "@/bridge-infrastructure-error";
-import {
-  claimDelivery,
-  delivery,
-  failDeadLetter,
-  recordFailure,
-  safeError,
-} from "@/composition";
 import { DiscordApiError } from "@/discord-api-error";
 
+/** Runtime validator for the minimal durable delivery message payload. */
 const QueuePayloadSchema = Schema.Struct({
   announcementId: Schema.String,
   deliveryId: Schema.String,
 });
+
+/** The ownership outcome returned by the delivery claim boundary. */
+export type DeliveryClaim = "claimed" | "complete" | "in_flight";
+
+/** Operations required by the queue adapter to process delivery messages. */
+export interface QueueOperations {
+  /** Atomically claim a delivery before its email side effect. */
+  readonly claimDelivery: (
+    deliveryId: string,
+    announcementId: string,
+    claimToken: string
+  ) => Effect.Effect<DeliveryClaim, unknown>;
+  /** Send a delivery that the caller has already claimed. */
+  readonly delivery: (
+    claimToken: string,
+    deliveryId: string,
+    announcementId: string
+  ) => Effect.Effect<void, unknown>;
+  /** Mark a delivery failed when a message reaches the dead-letter queue. */
+  readonly failDeadLetter: (
+    deliveryId: string
+  ) => Effect.Effect<boolean, unknown>;
+  /** Persist the outcome of a failed attempt owned by the supplied claim. */
+  readonly recordFailure: (
+    deliveryId: string,
+    error: string,
+    retryable: boolean,
+    claimToken: string
+  ) => Effect.Effect<void, unknown>;
+  /** Render an Effect failure as a safe message suitable for queue logs. */
+  readonly safeError: (cause: Cause.Cause<unknown>) => string;
+}
 
 const isRetryable = (cause: Cause.Cause<unknown>): boolean => {
   const failure = Cause.findErrorOption(cause);
@@ -30,10 +56,18 @@ const isRetryable = (cause: Cause.Cause<unknown>): boolean => {
     : false;
 };
 
-/** Process delivery or dead-letter messages from a Cloudflare queue batch. */
+/**
+ * Process delivery or dead-letter messages from a Cloudflare queue batch.
+ *
+ * @param batch - The Cloudflare queue batch to process.
+ * @param deadLetterQueueName - The configured queue name used to detect dead letters.
+ * @param operations - The persistence and delivery operations wired by composition.
+ * @returns A promise that resolves after each message is acknowledged or retried.
+ */
 export const processQueue = async (
   batch: MessageBatch<unknown>,
-  env: WorkerEnv
+  deadLetterQueueName: WorkerEnv["DELIVERY_DEAD_LETTER_QUEUE_NAME"],
+  operations: QueueOperations
 ): Promise<void> => {
   await Promise.all(
     batch.messages.map(async (message) => {
@@ -41,7 +75,7 @@ export const processQueue = async (
         message.body
       );
       if (payload._tag === "None") {
-        const deadLetter = batch.queue === env.DELIVERY_DEAD_LETTER_QUEUE_NAME;
+        const deadLetter = batch.queue === deadLetterQueueName;
         console.error(
           JSON.stringify({
             event: deadLetter
@@ -51,9 +85,9 @@ export const processQueue = async (
         );
         return;
       }
-      if (batch.queue === env.DELIVERY_DEAD_LETTER_QUEUE_NAME) {
+      if (batch.queue === deadLetterQueueName) {
         const failed = await Effect.runPromise(
-          failDeadLetter(env, payload.value.deliveryId)
+          operations.failDeadLetter(payload.value.deliveryId)
         );
         console.error(
           JSON.stringify({
@@ -66,8 +100,7 @@ export const processQueue = async (
       }
       const claimToken = crypto.randomUUID();
       const claim = await Effect.runPromiseExit(
-        claimDelivery(
-          env,
+        operations.claimDelivery(
           payload.value.deliveryId,
           payload.value.announcementId,
           claimToken
@@ -86,8 +119,7 @@ export const processQueue = async (
         return;
       }
       const result = await Effect.runPromiseExit(
-        delivery(
-          env,
+        operations.delivery(
           claimToken,
           payload.value.deliveryId,
           payload.value.announcementId
@@ -97,11 +129,10 @@ export const processQueue = async (
         return;
       }
 
-      const errorMessage = safeError(result.cause);
+      const errorMessage = operations.safeError(result.cause);
       const retryable = isRetryable(result.cause);
       const recorded = await Effect.runPromiseExit(
-        recordFailure(
-          env,
+        operations.recordFailure(
           payload.value.deliveryId,
           errorMessage,
           retryable,

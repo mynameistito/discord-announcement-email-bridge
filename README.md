@@ -136,6 +136,9 @@ $env:STAGE = $env:ALCHEMY_STAGE
 2. Deploy the isolated stage and note the URL printed by Alchemy:
 
    ```powershell
+   if ($env:ALCHEMY_STAGE -notmatch '^e2e-[a-z0-9]+(-[a-z0-9]+)*$') {
+     throw "Refusing to deploy: ALCHEMY_STAGE must be a dedicated e2e-* stage."
+   }
    bunx alchemy plan --stage $env:ALCHEMY_STAGE
    bunx alchemy deploy --stage $env:ALCHEMY_STAGE
    ```
@@ -149,7 +152,7 @@ $env:STAGE = $env:ALCHEMY_STAGE
      $headers["CF-Access-Client-Id"] = $env:CF_ACCESS_CLIENT_ID
      $headers["CF-Access-Client-Secret"] = $env:CF_ACCESS_CLIENT_SECRET
    }
-   Invoke-RestMethod -Method Get -Uri "$url/healthz" -Headers $headers
+   Invoke-RestMethod -Method Get -Uri "$url/healthz"
    Invoke-RestMethod -Method Get -Uri "$url/admin/status" -Headers $headers
    ```
 
@@ -165,6 +168,9 @@ $env:STAGE = $env:ALCHEMY_STAGE
 When finished, destroy only this test stage and clear the loaded values from the shell:
 
 ```powershell
+if ($env:ALCHEMY_STAGE -notmatch '^e2e-[a-z0-9]+(-[a-z0-9]+)*$') {
+  throw "Refusing to destroy: ALCHEMY_STAGE must be the dedicated e2e-* stage."
+}
 bunx alchemy destroy --stage $env:ALCHEMY_STAGE
 if ($LASTEXITCODE -ne 0) {
   throw "Alchemy destroy failed; credentials remain available so you can retry."

@@ -5,8 +5,14 @@ import worker from "../worker";
 
 describe("Worker health endpoint", () => {
   it("returns a secret-free stage and version response", async () => {
-    // SAFETY: the /healthz route reads only BUILD_VERSION and STAGE from env.
-    const env = { BUILD_VERSION: "test-sha", STAGE: "pr-12" } as WorkerEnv;
+    // Fake secrets make this test fail if /healthz exposes secret bindings.
+    const env = {
+      ADMIN_TOKEN: "test-admin-token",
+      BUILD_VERSION: "test-sha",
+      DISCORD_BOT_TOKEN: "test-discord-token",
+      RESEND_API_KEY: "test-resend-key",
+      STAGE: "pr-12",
+    } as WorkerEnv;
     const response = await worker.fetch(
       new Request("https://worker.example/healthz"),
       env

@@ -31,7 +31,7 @@ The bot must be able to read the destination channel and look up its Channel Fol
 
 ## Troubleshoot Discord polling failures
 
-Cron failures identify the Discord REST endpoint without logging channel or webhook IDs. A failed request remains a polling failure; the service does not advance the cursor or treat a 403 as success.
+Cron failures identify the Discord REST endpoint without logging channel or webhook IDs. A 403 remains a polling failure and does not advance the cursor. A webhook lookup returning 404 is different: the message is treated as missing follower metadata, skipped, and the cursor may advance.
 
 - `GET /channels/{channel_id}/messages` reads the configured destination channel. Check that the bot is installed in the destination guild and has `VIEW_CHANNEL` and `READ_MESSAGE_HISTORY` for that channel, including channel-specific permission overwrites. Confirm the configured destination guild and channel IDs refer to the channel receiving the followed posts.
 - `GET /webhooks/{webhook_id}` verifies Channel Follower metadata. This strict verification call requires `MANAGE_WEBHOOKS` in the watched destination channel; the service intentionally does not fall back to trusting a message's `webhook_id` alone.

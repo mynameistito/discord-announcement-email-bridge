@@ -9,6 +9,11 @@ import {
 } from "./application";
 import type { PollingPorts, UnparsedDiscordMessage } from "./application";
 import {
+  DiscordErrorPayloadSchema,
+  describeDiscordFailure,
+} from "./discord-diagnostics";
+import type { DiscordErrorPayload } from "./discord-diagnostics";
+import {
   MessageSchema,
   idempotencyKey,
   renderHtml,
@@ -390,8 +395,9 @@ function discordGet<T>(
       });
       if (!response.ok) {
         const retryable = response.status === 429 || response.status >= 500;
+        const payload = await discordErrorPayload(response);
         throw discordError(
-          `Discord REST returned ${response.status}`,
+          describeDiscordFailure(path, response.status, payload),
           response.status,
           retryable
         );
@@ -400,6 +406,18 @@ function discordGet<T>(
       return Schema.decodeUnknownSync(schema)(payload);
     },
   });
+}
+
+async function discordErrorPayload(
+  response: Response
+): Promise<DiscordErrorPayload | undefined> {
+  try {
+    return Schema.decodeUnknownSync(DiscordErrorPayloadSchema)(
+      await response.json()
+    );
+  } catch {
+    return undefined;
+  }
 }
 
 function persistBatch(

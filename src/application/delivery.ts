@@ -1,0 +1,119 @@
+import { Effect, Schema } from "effect";
+
+import { d1 } from "@/adapters/d1";
+import { sendEmail } from "@/adapters/resend";
+import type { WorkerEnv } from "@/alchemy.run";
+import { BridgeInfrastructureError } from "@/bridge-infrastructure-error";
+import { MessageSchema, renderHtml, renderText } from "@/domain";
+import type { Announcement } from "@/domain";
+
+const StoredMessageSchema = Schema.fromJsonString(MessageSchema);
+
+export const emailSubject = (announcement: Announcement): string => {
+  const title = announcement.message.embeds.find((embed) => embed.title)?.title;
+  const safeTitle = (title ?? announcement.message.content)
+    .replaceAll(/[\r\n]+/gu, " ")
+    .trim()
+    .slice(0, 100);
+  return safeTitle
+    ? `[Discord] Announcement — ${safeTitle}`.slice(0, 150)
+    : "[Discord] New announcement";
+};
+
+const emailSender = (name: string, address: string): string =>
+  `${name.trim().replaceAll(/[\r\n<>]+/gu, " ")} <${address.trim().replaceAll(/[\r\n<>]/gu, "")}>`;
+
+export const deliver = (
+  env: WorkerEnv,
+  deliveryId: string,
+  announcementId: string
+) =>
+  Effect.gen(function* deliverEffect() {
+    const delivery = yield* d1(() =>
+      env.DB.prepare(
+        "SELECT id, announcement_id, recipient, status, idempotency_key FROM deliveries WHERE id = ? AND announcement_id = ?"
+      )
+        .bind(deliveryId, announcementId)
+        .first<DeliveryState>()
+    );
+    if (
+      !delivery ||
+      delivery.status === "sent" ||
+      delivery.status === "failed"
+    ) {
+      return;
+    }
+    const row = yield* d1(() =>
+      env.DB.prepare(
+        "SELECT normalized_payload, source_guild_id, source_channel_id, source_message_id, follower_webhook_id, subscription_id FROM announcements WHERE id = ?"
+      )
+        .bind(announcementId)
+        .first<AnnouncementRow>()
+    );
+    if (!row) {
+      return yield* Effect.fail(
+        new BridgeInfrastructureError(
+          "load_announcement",
+          "delivery references missing announcement"
+        )
+      );
+    }
+    const message = yield* Schema.decodeUnknownEffect(StoredMessageSchema)(
+      row.normalized_payload
+    ).pipe(
+      Effect.mapError(
+        () =>
+          new BridgeInfrastructureError(
+            "decode_announcement",
+            "invalid stored message"
+          )
+      )
+    );
+    const announcement: Announcement = {
+      followerWebhookId: row.follower_webhook_id,
+      message,
+      sourceChannelId: row.source_channel_id,
+      sourceGuildId: row.source_guild_id,
+      sourceMessageId: row.source_message_id,
+      subscriptionId: row.subscription_id,
+    };
+    const response = yield* sendEmail(
+      env,
+      {
+        from: emailSender(env.EMAIL_FROM_NAME, env.EMAIL_FROM_EMAIL),
+        html: renderHtml(announcement),
+        subject: emailSubject(announcement),
+        text: renderText(announcement),
+        to: [delivery.recipient],
+      },
+      delivery.idempotency_key
+    );
+    yield* d1(() =>
+      env.DB.prepare(
+        "UPDATE deliveries SET status = 'sent', resend_email_id = ?, attempts = attempts + 1, updated_at = CURRENT_TIMESTAMP, sent_at = CURRENT_TIMESTAMP, last_error = NULL WHERE id = ? AND status != 'sent'"
+      )
+        .bind(response.id, delivery.id)
+        .run()
+    );
+    yield* Effect.logInfo("delivery.sent", {
+      deliveryId,
+      resendEmailId: response.id,
+    });
+  });
+
+type DeliveryStatus = "pending" | "queued" | "sent" | "failed";
+interface DeliveryState {
+  readonly id: string;
+  readonly recipient: string;
+  readonly status: DeliveryStatus;
+  readonly idempotency_key: string;
+}
+interface AnnouncementRow {
+  readonly normalized_payload: string;
+  readonly source_guild_id: string;
+  readonly source_channel_id: string;
+  readonly source_message_id: string;
+  readonly follower_webhook_id: string;
+  readonly subscription_id: string;
+}
+export { ApiError } from "@/application/delivery-error";

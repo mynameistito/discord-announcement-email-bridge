@@ -12,28 +12,7 @@ interface SafeRoute {
   readonly requiredPermissions?: string;
 }
 
-/** Describe a Discord REST failure without exposing resource IDs or response bodies. */
-export function describeDiscordFailure(
-  path: string,
-  status: number,
-  payload: DiscordErrorPayload | null = null
-): string {
-  const route = safeRoute(path);
-  const message = discordErrorMessage(payload?.code);
-  const messageDetail = message ? `: ${message}` : "";
-  const errorDetail = payload
-    ? `Discord error ${payload.code}${messageDetail}`
-    : "";
-  const permissionDetail =
-    status === 403 && route.requiredPermissions
-      ? `required bot permissions: ${route.requiredPermissions}`
-      : "";
-  const details = [errorDetail, permissionDetail].filter(Boolean).join("; ");
-  const detail = details ? ` (${details})` : "";
-  return `Discord REST GET ${route.name} returned ${status}${detail}`;
-}
-
-function safeRoute(path: string): SafeRoute {
+const safeRoute = (path: string): SafeRoute => {
   if (/^\/channels\/[^/]+\/messages(?:\?|$)/u.test(path)) {
     return {
       name: "/channels/{channel_id}/messages",
@@ -47,9 +26,9 @@ function safeRoute(path: string): SafeRoute {
     };
   }
   return { name: "an endpoint" };
-}
+};
 
-function discordErrorMessage(code: number | undefined): string | null {
+const discordErrorMessage = (code: number | undefined): string | null => {
   switch (code) {
     case 50_001: {
       return "Missing Access";
@@ -61,4 +40,25 @@ function discordErrorMessage(code: number | undefined): string | null {
       return null;
     }
   }
-}
+};
+
+/** Describe a Discord REST failure without exposing resource IDs or response bodies. */
+export const describeDiscordFailure = (
+  path: string,
+  status: number,
+  payload: DiscordErrorPayload | null = null
+): string => {
+  const route = safeRoute(path);
+  const message = discordErrorMessage(payload?.code);
+  const messageDetail = message ? `: ${message}` : "";
+  const errorDetail = payload
+    ? `Discord error ${payload.code}${messageDetail}`
+    : "";
+  const permissionDetail =
+    status === 403 && route.requiredPermissions
+      ? `required bot permissions: ${route.requiredPermissions}`
+      : "";
+  const details = [errorDetail, permissionDetail].filter(Boolean).join("; ");
+  const detail = details ? ` (${details})` : "";
+  return `Discord REST GET ${route.name} returned ${status}${detail}`;
+};

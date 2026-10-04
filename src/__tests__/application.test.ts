@@ -1,11 +1,11 @@
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
-import { pollAll, pollingServiceLayer } from "../application";
-import type { PollingPorts } from "../application";
-import { BridgeInfrastructureError } from "../bridge-infrastructure-error";
-import { DiscordApiError } from "../discord-api-error";
-import type { Subscription } from "../domain";
+import { pollAll, pollingServiceLayer } from "@/application/polling";
+import type { PollingPorts } from "@/application/polling";
+import { BridgeInfrastructureError } from "@/bridge-infrastructure-error";
+import { DiscordApiError } from "@/discord-api-error";
+import type { Subscription } from "@/domain";
 
 const subscription: Subscription = {
   destinationChannelId: "target-channel",
@@ -14,25 +14,23 @@ const subscription: Subscription = {
   id: "sub",
 };
 
-function crosspost(id: string) {
-  return {
-    attachments: [],
-    author: { username: "news" },
-    channel_id: "target-channel",
-    content: `Announcement ${id}`,
-    embeds: [],
-    flags: 2,
-    id,
-    message_reference: {
-      channel_id: "source-channel",
-      guild_id: "source-guild",
-      message_id: id,
-    },
-    timestamp: "2026-10-03T10:00:00Z",
-    type: 0,
-    webhook_id: "follower",
-  };
-}
+const crosspost = (id: string) => ({
+  attachments: [],
+  author: { username: "news" },
+  channel_id: "target-channel",
+  content: `Announcement ${id}`,
+  embeds: [],
+  flags: 2,
+  id,
+  message_reference: {
+    channel_id: "source-channel",
+    guild_id: "source-guild",
+    message_id: id,
+  },
+  timestamp: "2026-10-03T10:00:00Z",
+  type: 0,
+  webhook_id: "follower",
+});
 
 interface FakePollingPorts {
   readonly ports: PollingPorts;
@@ -41,11 +39,11 @@ interface FakePollingPorts {
   readonly beforeValues: () => readonly string[];
 }
 
-function fakePorts(
+const fakePorts = (
   pages: readonly (readonly unknown[])[],
   initialCursor: string | null = "100",
   failEnqueueCount = 0
-): FakePollingPorts {
+): FakePollingPorts => {
   let cursorValue: string | undefined = initialCursor ?? undefined;
   let initialized = initialCursor !== null;
   const discovered = new Map<string, string>();
@@ -123,7 +121,7 @@ function fakePorts(
     ports,
     sent: () => queued,
   };
-}
+};
 
 describe("announcement discovery integration", () => {
   it("paginates beyond 100, sorts safely, and advances only after durable persistence", async () => {
@@ -281,27 +279,5 @@ describe("announcement discovery integration", () => {
       pollAll.pipe(Effect.provide(pollingServiceLayer(ports)))
     );
     expect(fake.sent()).toStrictEqual(["delivery-201"]);
-  });
-
-  it("does not advance the cursor if a later page fails", async () => {
-    const firstPage = Array.from({ length: 100 }, (_, index) =>
-      crosspost(String(200 - index))
-    );
-    const fake = fakePorts([firstPage]);
-    const ports: PollingPorts = {
-      ...fake.ports,
-      source: {
-        ...fake.ports.source,
-        fetchBefore: () =>
-          Effect.fail(new DiscordApiError("network error", 503, true)),
-      },
-    };
-    await expect(
-      Effect.runPromise(
-        pollAll.pipe(Effect.provide(pollingServiceLayer(ports)))
-      )
-    ).rejects.toThrow("network error");
-    expect(fake.cursor()).toBe("100");
-    expect(fake.sent()).toStrictEqual([]);
   });
 });

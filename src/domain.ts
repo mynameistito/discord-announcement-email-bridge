@@ -1,4 +1,4 @@
-import { Effect, Schema } from "effect";
+import { Schema } from "effect";
 
 const RefSchema = Schema.Struct({
   channel_id: Schema.String,
@@ -77,12 +77,49 @@ export interface Announcement {
   readonly followerWebhookId: string;
 }
 
+export const hasCrosspostFlag = (flags: number): boolean =>
+  flags >= 2 && Math.floor(flags / 2) % 2 === 1;
+
+const matchesFollowerWebhook = (
+  message: DiscordMessage,
+  webhook: FollowerWebhook | null,
+  reference: NonNullable<DiscordMessage["message_reference"]>
+): boolean => {
+  if (!message.webhook_id || webhook?.id !== message.webhook_id) {
+    return false;
+  }
+  if (webhook.type !== 2 || webhook.source_guild?.id !== reference.guild_id) {
+    return false;
+  }
+  return webhook.source_channel?.id === reference.channel_id;
+};
+
+const matchesSubscription = (
+  message: DiscordMessage,
+  subscription: Subscription,
+  reference: NonNullable<DiscordMessage["message_reference"]>
+): boolean => {
+  if (message.channel_id !== subscription.destinationChannelId) {
+    return false;
+  }
+  if (
+    subscription.sourceGuildId !== undefined &&
+    reference.guild_id !== subscription.sourceGuildId
+  ) {
+    return false;
+  }
+  return (
+    subscription.sourceChannelId === undefined ||
+    reference.channel_id === subscription.sourceChannelId
+  );
+};
+
 /** The only evidence accepted as a followed announcement copy. */
-export function classifyFollowerMessage(
+export const classifyFollowerMessage = (
   message: DiscordMessage,
   webhook: FollowerWebhook | null,
   subscription: Subscription
-): Announcement | undefined {
+): Announcement | undefined => {
   const reference = message.message_reference;
   const isCrosspost = hasCrosspostFlag(message.flags ?? 0);
   if (
@@ -104,48 +141,10 @@ export function classifyFollowerMessage(
     sourceMessageId: reference.message_id,
     subscriptionId: subscription.id,
   };
-}
-
-export function hasCrosspostFlag(flags: number): boolean {
-  return flags >= 2 && Math.floor(flags / 2) % 2 === 1;
-}
-
-function matchesFollowerWebhook(
-  message: DiscordMessage,
-  webhook: FollowerWebhook | null,
-  reference: NonNullable<DiscordMessage["message_reference"]>
-): boolean {
-  if (!message.webhook_id || webhook?.id !== message.webhook_id) {
-    return false;
-  }
-  if (webhook.type !== 2 || webhook.source_guild?.id !== reference.guild_id) {
-    return false;
-  }
-  return webhook.source_channel?.id === reference.channel_id;
-}
-
-function matchesSubscription(
-  message: DiscordMessage,
-  subscription: Subscription,
-  reference: NonNullable<DiscordMessage["message_reference"]>
-): boolean {
-  if (message.channel_id !== subscription.destinationChannelId) {
-    return false;
-  }
-  if (
-    subscription.sourceGuildId !== undefined &&
-    reference.guild_id !== subscription.sourceGuildId
-  ) {
-    return false;
-  }
-  return (
-    subscription.sourceChannelId === undefined ||
-    reference.channel_id === subscription.sourceChannelId
-  );
-}
+};
 
 /** Compare Discord snowflakes without converting 64-bit values to Number. */
-export function compareSnowflakes(left: string, right: string): number {
+export const compareSnowflakes = (left: string, right: string): number => {
   const a = BigInt(left);
   const b = BigInt(right);
   if (a < b) {
@@ -155,19 +154,47 @@ export function compareSnowflakes(left: string, right: string): number {
     return 1;
   }
   return 0;
-}
+};
 
 /** Sort messages in chronological order using their snowflake IDs. */
-export function oldestFirst(
+export const oldestFirst = (
   messages: readonly DiscordMessage[]
-): readonly DiscordMessage[] {
-  return messages.toSorted((left, right) =>
-    compareSnowflakes(left.id, right.id)
-  );
-}
+): readonly DiscordMessage[] =>
+  messages.toSorted((left, right) => compareSnowflakes(left.id, right.id));
+
+const escapeHtml = (value: string): string =>
+  value.replaceAll(/[&<>"']/gu, (character) => {
+    switch (character) {
+      case '"': {
+        return "&quot;";
+      }
+      case "&": {
+        return "&amp;";
+      }
+      case "'": {
+        return "&#39;";
+      }
+      case "<": {
+        return "&lt;";
+      }
+      case ">": {
+        return "&gt;";
+      }
+      default: {
+        return character;
+      }
+    }
+  });
+
+const escapeAttribute = (value: string): string => {
+  if (!/^https?:\/\//iu.test(value)) {
+    return "#";
+  }
+  return escapeHtml(value);
+};
 
 /** Render an HTML-escaped email for a discovered announcement. */
-export function renderHtml(announcement: Announcement): string {
+export const renderHtml = (announcement: Announcement): string => {
   const { message } = announcement;
   const content = escapeHtml(message.content);
   const embeds = message.embeds
@@ -195,10 +222,10 @@ export function renderHtml(announcement: Announcement): string {
     )
     .join("");
   return `<main><p><strong>${escapeHtml(message.author.username)}</strong> · ${escapeHtml(message.timestamp)}</p><p>${content}</p>${embeds}<ul>${attachments}</ul><p><a href="https://discord.com/channels/${announcement.sourceGuildId}/${announcement.sourceChannelId}/${announcement.sourceMessageId}">View announcement</a></p></main>`;
-}
+};
 
 /** Render a text/plain email for a discovered announcement. */
-export function renderText(announcement: Announcement): string {
+export const renderText = (announcement: Announcement): string => {
   const { message } = announcement;
   const embeds = message.embeds
     .map((embed) =>
@@ -227,56 +254,4 @@ export function renderText(announcement: Announcement): string {
   ]
     .filter(Boolean)
     .join("\n\n");
-}
-
-/** Create a deterministic logical delivery key. */
-export function idempotencyKey(
-  announcement: Announcement,
-  recipient: string
-): Effect.Effect<string, Error> {
-  return Effect.tryPromise({
-    catch: () => new Error("Unable to generate delivery identity"),
-    try: async () => {
-      const digest = await crypto.subtle.digest(
-        "SHA-256",
-        new TextEncoder().encode(recipient.toLowerCase())
-      );
-      const hash = Array.from(new Uint8Array(digest), (byte) =>
-        byte.toString(16).padStart(2, "0")
-      ).join("");
-      return `discord-follow/${announcement.subscriptionId}/${announcement.message.id}/${hash}`;
-    },
-  });
-}
-
-function escapeHtml(value: string): string {
-  return value.replaceAll(/[&<>"']/gu, (character) => {
-    switch (character) {
-      case '"': {
-        return "&quot;";
-      }
-      case "&": {
-        return "&amp;";
-      }
-      case "'": {
-        return "&#39;";
-      }
-      case "<": {
-        return "&lt;";
-      }
-      case ">": {
-        return "&gt;";
-      }
-      default: {
-        return character;
-      }
-    }
-  });
-}
-
-function escapeAttribute(value: string): string {
-  if (!/^https?:\/\//iu.test(value)) {
-    return "#";
-  }
-  return escapeHtml(value);
-}
+};

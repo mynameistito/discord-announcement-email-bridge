@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { workerStageConfig } from "../stage-config";
+import { workerStageConfig } from "@/stage-config";
 
 describe("worker stage configuration", () => {
   it("uses the production URL name and keeps its polling cron", () => {

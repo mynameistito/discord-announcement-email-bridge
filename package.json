@@ -31,6 +31,8 @@
     "prepare": "lefthook install"
   },
   "dependencies": {
+    "@distilled.cloud/discord": "1.0.0-rc.13",
+    "@distilled.cloud/resend": "1.0.0-rc.13",
     "alchemy": "2.0.0-beta.80",
     "effect": "4.0.0"
   },

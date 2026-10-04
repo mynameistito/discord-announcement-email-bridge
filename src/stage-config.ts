@@ -5,7 +5,7 @@ export interface WorkerStageConfig {
   readonly crons: string[];
 }
 
-export function workerStageConfig(stage: string): WorkerStageConfig {
+export const workerStageConfig = (stage: string): WorkerStageConfig => {
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(stage)) {
     throw new Error(
       "Worker stage names must use lowercase letters, numbers, and single hyphens"
@@ -24,4 +24,4 @@ export function workerStageConfig(stage: string): WorkerStageConfig {
     crons: stage === "prod" ? ["* * * * *"] : [],
     name,
   };
-}
+};

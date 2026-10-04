@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { describeDiscordFailure } from "../discord-diagnostics";
+import { describeDiscordFailure } from "@/discord-diagnostics";
 
 describe("Discord REST failure diagnostics", () => {
   it("identifies message-history access failures without logging the channel ID", () => {

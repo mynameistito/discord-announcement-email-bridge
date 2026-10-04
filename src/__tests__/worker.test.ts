@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { WorkerEnv } from "../../alchemy.run";
-import worker from "../worker";
+import type { WorkerEnv } from "@/alchemy.run";
+import worker from "@/worker";
 
 describe("Worker health endpoint", () => {
   it("returns a secret-free stage and version response", async () => {

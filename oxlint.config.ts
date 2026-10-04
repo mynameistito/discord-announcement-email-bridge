@@ -28,9 +28,4 @@ export default defineConfig({
       },
     },
   ],
-  rules: {
-    // Preserve declaration-style functions and their normal hoisting behavior.
-    "eslint/func-style": ["error", "declaration"],
-    "eslint/no-use-before-define": ["error", { functions: false }],
-  },
 });

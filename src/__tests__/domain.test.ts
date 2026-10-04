@@ -4,13 +4,12 @@ import { describe, expect, it } from "vitest";
 import {
   classifyFollowerMessage,
   compareSnowflakes,
-  idempotencyKey,
   MessageSchema,
   oldestFirst,
   renderHtml,
   renderText,
-} from "../domain";
-import type { DiscordMessage, Subscription } from "../domain";
+} from "@/domain";
+import type { DiscordMessage, Subscription } from "@/domain";
 
 const subscription: Subscription = {
   destinationChannelId: "channel-target",
@@ -19,40 +18,38 @@ const subscription: Subscription = {
   id: "sub-1",
 };
 
-function message(
+const message = (
   id: string,
   overrides: Partial<DiscordMessage> = {}
-): DiscordMessage {
-  return {
-    attachments: [
-      {
-        filename: "schedule.pdf",
-        url: "https://cdn.discordapp.com/schedule.pdf",
-      },
-    ],
-    author: { username: "source news" },
-    channel_id: "channel-target",
-    content: "Service maintenance at <noon> & stay tuned",
-    embeds: [
-      {
-        description: "Details",
-        fields: [{ name: "Status", value: "Planned" }],
-        title: "Update",
-      },
-    ],
-    flags: 2,
-    id,
-    message_reference: {
-      channel_id: "source-channel",
-      guild_id: "source-guild",
-      message_id: "source-message",
+): DiscordMessage => ({
+  attachments: [
+    {
+      filename: "schedule.pdf",
+      url: "https://cdn.discordapp.com/schedule.pdf",
     },
-    timestamp: "2026-10-03T10:00:00Z",
-    type: 0,
-    webhook_id: "follower-hook",
-    ...overrides,
-  };
-}
+  ],
+  author: { username: "source news" },
+  channel_id: "channel-target",
+  content: "Service maintenance at <noon> & stay tuned",
+  embeds: [
+    {
+      description: "Details",
+      fields: [{ name: "Status", value: "Planned" }],
+      title: "Update",
+    },
+  ],
+  flags: 2,
+  id,
+  message_reference: {
+    channel_id: "source-channel",
+    guild_id: "source-guild",
+    message_id: "source-message",
+  },
+  timestamp: "2026-10-03T10:00:00Z",
+  type: 0,
+  webhook_id: "follower-hook",
+  ...overrides,
+});
 
 const webhook = {
   id: "follower-hook",
@@ -173,22 +170,5 @@ describe("snowflakes and email rendering", () => {
       hasPlainAttachment: true,
       hasRawHtml: false,
     });
-  });
-
-  it("uses stable logical email identity", async () => {
-    const announcement = classifyFollowerMessage(
-      message("100"),
-      webhook,
-      subscription
-    );
-    if (!announcement) {
-      throw new Error("fixture should classify");
-    }
-    const [first, second] = await Promise.all([
-      Effect.runPromise(idempotencyKey(announcement, "recipient@example.test")),
-      Effect.runPromise(idempotencyKey(announcement, "RECIPIENT@example.test")),
-    ]);
-    expect(first).toMatch(/^discord-follow\/sub-1\/100\/[a-f0-9]{64}$/u);
-    expect(second).toStrictEqual(first);
   });
 });

@@ -12,7 +12,7 @@ export default defineConfig({
   jsPlugins: jsPlugins.jsPlugins,
   overrides: [
     {
-      files: ["src/*.ts"],
+      files: ["src/**/*.ts"],
       rules: {
         "no-restricted-imports": [
           "error",
@@ -20,7 +20,7 @@ export default defineConfig({
             patterns: [
               {
                 message: "Use the @/* alias for imports between src modules.",
-                regex: "^\\.\\.(?:/\\.\\.)?/(?!alchemy\\.run$)",
+                regex: "^\\.{1,2}/",
               },
             ],
           },

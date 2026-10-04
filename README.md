@@ -166,6 +166,9 @@ When finished, destroy only this test stage and clear the loaded values from the
 
 ```powershell
 bunx alchemy destroy --stage $env:ALCHEMY_STAGE
+if ($LASTEXITCODE -ne 0) {
+  throw "Alchemy destroy failed; credentials remain available so you can retry."
+}
 "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "DISCORD_BOT_TOKEN", "DISCORD_GUILD_ID", "DISCORD_TARGET_CHANNEL_ID", "EMAIL_TO", "RESEND_API_KEY", "EMAIL_FROM_NAME", "EMAIL_FROM_EMAIL", "ADMIN_TOKEN", "CF_ACCESS_CLIENT_ID", "CF_ACCESS_CLIENT_SECRET", "ALCHEMY_STAGE", "STAGE" | ForEach-Object {
   Remove-Item "Env:$_" -ErrorAction SilentlyContinue
 }

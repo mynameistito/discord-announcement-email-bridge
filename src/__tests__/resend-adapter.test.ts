@@ -49,7 +49,11 @@ describe("Resend adapter", () => {
 
     await expect(
       Effect.runPromise(sendEmail(env, payload, "stable-delivery-key"))
-    ).rejects.toMatchObject({ retryable: true, status: 503 });
+    ).rejects.toMatchObject({
+      message: "Resend request failed (HTTP 503)",
+      retryable: true,
+      status: 503,
+    });
     expect(attempts).toBe(1);
   });
 });

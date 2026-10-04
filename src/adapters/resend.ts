@@ -55,9 +55,8 @@ const toResendApiError = (cause: unknown): ApiError => {
     tag === "ResendParseError" ||
     retryableStatus ||
     status >= 500;
-  const message = parsed._tag === "Some" ? parsed.value.message : undefined;
   return new ApiError(
-    message ? message.slice(0, 300) : "Resend request failed",
+    `Resend request failed (HTTP ${status})`,
     status,
     retryable
   );

@@ -1,9 +1,12 @@
 import { Context, Effect, Layer, Schema } from "effect";
 
+import type { BridgeInfrastructureError } from "./bridge-infrastructure-error";
+import { DiscordApiError } from "./discord-api-error";
 import {
   MessageSchema,
   classifyFollowerMessage,
   compareSnowflakes,
+  hasCrosspostFlag,
   oldestFirst,
 } from "./domain";
 import type {
@@ -22,34 +25,6 @@ const PotentialCrosspostSchema = Schema.Struct({
 /** A Discord message payload held at the REST-to-domain decoding boundary. */
 export interface UnparsedDiscordMessage {
   readonly raw: unknown;
-}
-
-/** A retryable Discord REST or payload failure. */
-export class DiscordApiError extends Error {
-  readonly _tag = "DiscordApiError" as const;
-  override readonly name = "DiscordApiError";
-  readonly status: number;
-  readonly retryable: boolean;
-  constructor(message: string, status: number, retryable: boolean) {
-    super(message);
-    this.status = status;
-    this.retryable = retryable;
-  }
-}
-
-/** A typed failure raised by a persistence or queue adapter. */
-export class BridgeInfrastructureError extends Error {
-  readonly _tag = "BridgeInfrastructureError" as const;
-  override readonly name = "BridgeInfrastructureError";
-  readonly operation: string;
-  readonly retryable: boolean;
-  override readonly cause: unknown;
-  constructor(operation: string, cause: unknown, retryable = false) {
-    super(`Bridge infrastructure operation failed: ${operation}`);
-    this.operation = operation;
-    this.cause = cause;
-    this.retryable = retryable;
-  }
 }
 
 /** Identifier for one durable queue delivery. */
@@ -74,7 +49,7 @@ export interface PollingPorts {
     ) => Effect.Effect<readonly UnparsedDiscordMessage[], DiscordApiError>;
     readonly getWebhook: (
       webhookId: string
-    ) => Effect.Effect<FollowerWebhook | undefined, DiscordApiError>;
+    ) => Effect.Effect<FollowerWebhook | null, DiscordApiError>;
   };
   readonly repository: {
     readonly enabledSubscriptions: () => Effect.Effect<
@@ -112,9 +87,11 @@ export class PollingService extends Context.Service<
 >()("discord-email/PollingService") {}
 
 /** Test or production implementation layer for polling. */
-export const pollingServiceLayer = (
+export function pollingServiceLayer(
   ports: PollingPorts
-): Layer.Layer<PollingService> => Layer.succeed(PollingService, ports);
+): Layer.Layer<PollingService> {
+  return Layer.succeed(PollingService, ports);
+}
 
 /** Poll all enabled subscriptions, persist discoveries/cursors, then enqueue identifiers. */
 export const pollAll = Effect.gen(function* pollAll() {
@@ -125,7 +102,7 @@ export const pollAll = Effect.gen(function* pollAll() {
     const failure = yield* pollSubscription(ports, subscription).pipe(
       Effect.match({
         onFailure: (error) => `${subscription.id}: ${error.message}`,
-        onSuccess: () => undefined,
+        onSuccess: () => "",
       })
     );
     if (failure) {
@@ -271,7 +248,7 @@ function decodePolledMessage(
   )(payload.raw);
   if (
     possibleCrosspost._tag === "Some" &&
-    (possibleCrosspost.value.flags & 2) !== 0
+    hasCrosspostFlag(possibleCrosspost.value.flags)
   ) {
     return {
       _tag: "MalformedCrosspost",
@@ -293,15 +270,15 @@ function classifyMessages(
 ) {
   return Effect.gen(function* classifyMessagesEffect() {
     const announcements: Announcement[] = [];
-    const webhooks = new Map<string, FollowerWebhook | undefined>();
+    const webhooks = new Map<string, FollowerWebhook | null>();
     for (const message of messages) {
-      if (message.webhook_id && ((message.flags ?? 0) & 2) !== 0) {
-        let webhook = webhooks.get(message.webhook_id);
+      if (message.webhook_id && hasCrosspostFlag(message.flags ?? 0)) {
+        let webhook = webhooks.get(message.webhook_id) ?? null;
         if (!webhooks.has(message.webhook_id)) {
           webhook = yield* ports.source.getWebhook(message.webhook_id).pipe(
             Effect.catchIf(
               (error) => error.status === 404,
-              () => Effect.succeed<undefined>(undefined)
+              () => Effect.succeed(null)
             )
           );
           webhooks.set(message.webhook_id, webhook);

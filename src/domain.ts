@@ -80,11 +80,11 @@ export interface Announcement {
 /** The only evidence accepted as a followed announcement copy. */
 export function classifyFollowerMessage(
   message: DiscordMessage,
-  webhook: FollowerWebhook | undefined,
+  webhook: FollowerWebhook | null,
   subscription: Subscription
 ): Announcement | undefined {
   const reference = message.message_reference;
-  const isCrosspost = ((message.flags ?? 0) & 2) !== 0;
+  const isCrosspost = hasCrosspostFlag(message.flags ?? 0);
   if (
     !isCrosspost ||
     !reference ||
@@ -106,9 +106,13 @@ export function classifyFollowerMessage(
   };
 }
 
+export function hasCrosspostFlag(flags: number): boolean {
+  return flags >= 2 && Math.floor(flags / 2) % 2 === 1;
+}
+
 function matchesFollowerWebhook(
   message: DiscordMessage,
-  webhook: FollowerWebhook | undefined,
+  webhook: FollowerWebhook | null,
   reference: NonNullable<DiscordMessage["message_reference"]>
 ): boolean {
   if (!message.webhook_id || webhook?.id !== message.webhook_id) {

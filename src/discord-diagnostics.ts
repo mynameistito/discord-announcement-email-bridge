@@ -16,7 +16,7 @@ interface SafeRoute {
 export function describeDiscordFailure(
   path: string,
   status: number,
-  payload: DiscordErrorPayload | undefined
+  payload: DiscordErrorPayload | null = null
 ): string {
   const route = safeRoute(path);
   const message = discordErrorMessage(payload?.code);
@@ -49,7 +49,7 @@ function safeRoute(path: string): SafeRoute {
   return { name: "an endpoint" };
 }
 
-function discordErrorMessage(code: number | undefined): string | undefined {
+function discordErrorMessage(code: number | undefined): string | null {
   switch (code) {
     case 50_001: {
       return "Missing Access";
@@ -58,7 +58,7 @@ function discordErrorMessage(code: number | undefined): string | undefined {
       return "Missing Permissions";
     }
     default: {
-      return undefined;
+      return null;
     }
   }
 }

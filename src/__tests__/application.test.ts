@@ -1,13 +1,10 @@
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  BridgeInfrastructureError,
-  DiscordApiError,
-  pollAll,
-  pollingServiceLayer,
-} from "../application";
+import { pollAll, pollingServiceLayer } from "../application";
 import type { PollingPorts } from "../application";
+import { BridgeInfrastructureError } from "../bridge-infrastructure-error";
+import { DiscordApiError } from "../discord-api-error";
 import type { Subscription } from "../domain";
 
 const subscription: Subscription = {
@@ -88,8 +85,8 @@ function fakePorts(
           [...discovered.values()]
             .filter((id) => !marked.has(id))
             .map((id) => ({
-              deliveryId: `delivery-${id}`,
               announcementId: `announcement-${id}`,
+              deliveryId: `delivery-${id}`,
             }))
         ),
       persistDiscoveryBatch: (_subscription, announcements, cursor) =>
@@ -114,17 +111,17 @@ function fakePorts(
       getWebhook: (id) =>
         Effect.succeed({
           id,
-          type: 2,
-          source_guild: { id: "source-guild" },
           source_channel: { id: "source-channel" },
+          source_guild: { id: "source-guild" },
+          type: 2,
         }),
     },
   };
   return {
+    beforeValues: () => beforeValues,
     cursor: () => (initialized ? (cursorValue ?? "0") : undefined),
     ports,
     sent: () => queued,
-    beforeValues: () => beforeValues,
   };
 }
 

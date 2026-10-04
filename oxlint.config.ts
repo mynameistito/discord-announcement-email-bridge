@@ -10,16 +10,27 @@ export default defineConfig({
   extends: [core, vitest, antiSlop, jsPlugins],
   ignorePatterns: core.ignorePatterns,
   jsPlugins: jsPlugins.jsPlugins,
+  overrides: [
+    {
+      files: ["src/*.ts"],
+      rules: {
+        "no-restricted-imports": [
+          "error",
+          {
+            patterns: [
+              {
+                message: "Use the @/* alias for imports between src modules.",
+                regex: "^\\.\\.(?:/\\.\\.)?/(?!alchemy\\.run$)",
+              },
+            ],
+          },
+        ],
+      },
+    },
+  ],
   rules: {
-    "eslint/func-style": "off",
-    "eslint/max-classes-per-file": "off",
-    "eslint/no-await-in-loop": "off",
-    "eslint/no-bitwise": "off",
-    "eslint/no-use-before-define": "off",
-    "eslint/sort-keys": "off",
-    // Effect.succeed(undefined) needs its explicit success value in adapters.
-    "unicorn/no-useless-undefined": "off",
-    "promise/prefer-await-to-callbacks": "off",
-    "promise/prefer-await-to-then": "off",
+    // Preserve declaration-style functions and their normal hoisting behavior.
+    "eslint/func-style": ["error", "declaration"],
+    "eslint/no-use-before-define": ["error", { functions: false }],
   },
 });

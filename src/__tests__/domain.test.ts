@@ -19,38 +19,40 @@ const subscription: Subscription = {
   id: "sub-1",
 };
 
-const message = (
+function message(
   id: string,
   overrides: Partial<DiscordMessage> = {}
-): DiscordMessage => ({
-  attachments: [
-    {
-      filename: "schedule.pdf",
-      url: "https://cdn.discordapp.com/schedule.pdf",
+): DiscordMessage {
+  return {
+    attachments: [
+      {
+        filename: "schedule.pdf",
+        url: "https://cdn.discordapp.com/schedule.pdf",
+      },
+    ],
+    author: { username: "source news" },
+    channel_id: "channel-target",
+    content: "Service maintenance at <noon> & stay tuned",
+    embeds: [
+      {
+        description: "Details",
+        fields: [{ name: "Status", value: "Planned" }],
+        title: "Update",
+      },
+    ],
+    flags: 2,
+    id,
+    message_reference: {
+      channel_id: "source-channel",
+      guild_id: "source-guild",
+      message_id: "source-message",
     },
-  ],
-  author: { username: "source news" },
-  channel_id: "channel-target",
-  content: "Service maintenance at <noon> & stay tuned",
-  embeds: [
-    {
-      title: "Update",
-      description: "Details",
-      fields: [{ name: "Status", value: "Planned" }],
-    },
-  ],
-  flags: 2,
-  id,
-  message_reference: {
-    channel_id: "source-channel",
-    guild_id: "source-guild",
-    message_id: "source-message",
-  },
-  timestamp: "2026-10-03T10:00:00Z",
-  type: 0,
-  webhook_id: "follower-hook",
-  ...overrides,
-});
+    timestamp: "2026-10-03T10:00:00Z",
+    type: 0,
+    webhook_id: "follower-hook",
+    ...overrides,
+  };
+}
 
 const webhook = {
   id: "follower-hook",
@@ -159,15 +161,15 @@ describe("snowflakes and email rendering", () => {
       hasAttributedMessageUrl: text.includes(
         "/source-guild/source-channel/source-message"
       ),
-      hasEscapedContent: html.includes("&lt;noon&gt; &amp; stay tuned"),
       hasEmbedField: text.includes("Status"),
+      hasEscapedContent: html.includes("&lt;noon&gt; &amp; stay tuned"),
       hasPlainAttachment: text.includes("schedule.pdf"),
       hasRawHtml: html.includes("<noon>"),
     }).toStrictEqual({
       hasAttachmentLink: true,
       hasAttributedMessageUrl: true,
-      hasEscapedContent: true,
       hasEmbedField: true,
+      hasEscapedContent: true,
       hasPlainAttachment: true,
       hasRawHtml: false,
     });

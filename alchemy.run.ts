@@ -23,6 +23,7 @@ const Database = D1.Database("BridgeDatabase", {
 
 /** Cloudflare Worker entrypoint and infrastructure resources. */
 export const BridgeWorker = Worker("DiscordAnnouncementEmailBridge", {
+  bundle: !usePrebuiltWorker,
   compatibility: { date: "2026-10-03", flags: ["nodejs_compat"] },
   crons: workerConfig.crons,
   env: {
@@ -50,7 +51,6 @@ export const BridgeWorker = Worker("DiscordAnnouncementEmailBridge", {
   },
   main: usePrebuiltWorker ? "./dist/worker.js" : "./src/worker.ts",
   name: workerConfig.name,
-  bundle: !usePrebuiltWorker,
 });
 /** Runtime environment shape inferred from the configured Worker bindings. */
 export type WorkerEnv = InferEnv<typeof BridgeWorker>;

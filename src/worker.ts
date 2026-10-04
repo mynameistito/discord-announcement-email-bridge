@@ -1,13 +1,10 @@
 import { Cause, Effect, Redacted, Schema } from "effect";
 
 import type { WorkerEnv } from "../alchemy.run";
-import {
-  BridgeInfrastructureError,
-  DiscordApiError,
-  pollingServiceLayer,
-  pollAll,
-} from "./application";
+import { pollingServiceLayer, pollAll } from "./application";
 import type { PollingPorts, UnparsedDiscordMessage } from "./application";
+import { BridgeInfrastructureError } from "./bridge-infrastructure-error";
+import { DiscordApiError } from "./discord-api-error";
 import {
   DiscordErrorPayloadSchema,
   describeDiscordFailure,
@@ -69,9 +66,9 @@ const worker = {
       await processDeadLetters(batch.messages, env);
       return;
     }
-    for (const message of batch.messages) {
-      await processDeliveryMessage(message, env);
-    }
+    await Promise.all(
+      batch.messages.map((message) => processDeliveryMessage(message, env))
+    );
   },
 
   async scheduled(
@@ -81,7 +78,7 @@ const worker = {
     const result = await runPoll(env);
     if (!result.ok) {
       console.error(
-        JSON.stringify({ event: "cron.failed", error: result.error })
+        JSON.stringify({ error: result.error, event: "cron.failed" })
       );
     }
   },
@@ -93,9 +90,9 @@ async function processDeadLetters(
   messages: MessageBatch<unknown>["messages"],
   env: WorkerEnv
 ): Promise<void> {
-  for (const message of messages) {
-    await processDeadLetterMessage(message, env);
-  }
+  await Promise.all(
+    messages.map((message) => processDeadLetterMessage(message, env))
+  );
 }
 
 async function processDeadLetterMessage(
@@ -146,8 +143,8 @@ async function processDeliveryMessage(
   if (recorded._tag === "Failure") {
     console.error(
       JSON.stringify({
-        event: "delivery.record_failed",
         deliveryId: payload.value.deliveryId,
+        event: "delivery.record_failed",
       })
     );
     message.retry({ delaySeconds: 60 });
@@ -156,10 +153,10 @@ async function processDeliveryMessage(
   if (retryable) {
     console.warn(
       JSON.stringify({
-        event: "delivery.retry",
-        deliveryId: payload.value.deliveryId,
         attempt: message.attempts,
+        deliveryId: payload.value.deliveryId,
         error: errorMessage,
+        event: "delivery.retry",
       })
     );
     message.retry({ delaySeconds: 60 });
@@ -167,18 +164,18 @@ async function processDeliveryMessage(
   }
   console.error(
     JSON.stringify({
-      event: "delivery.failed",
       deliveryId: payload.value.deliveryId,
       error: errorMessage,
+      event: "delivery.failed",
     })
   );
 }
 
 function healthResponse(env: WorkerEnv): Response {
   return Response.json({
+    stage: env.STAGE ?? "local",
     status: "ok",
     version: env.BUILD_VERSION ?? "development",
-    stage: env.STAGE ?? "local",
   });
 }
 
@@ -234,11 +231,11 @@ async function runPoll(
 > {
   const config = subscriptionFromEnv(env);
   if (!config) {
-    return { ok: false, error: "required_configuration_missing" };
+    return { error: "required_configuration_missing", ok: false };
   }
   const seed = await Effect.runPromiseExit(ensureSubscription(env.DB, config));
   if (seed._tag === "Failure") {
-    return { ok: false, error: safeError(seed.cause) };
+    return { error: safeError(seed.cause), ok: false };
   }
   const ports = createPollingPorts(env);
   const result = await Effect.runPromiseExit(
@@ -275,8 +272,8 @@ function createPollingPorts(env: WorkerEnv): PollingPorts {
   return {
     enqueue: (delivery) =>
       Effect.tryPromise({
-        try: () => env.DELIVERY_QUEUE.send(delivery),
         catch: (cause) => infrastructureError("queue_send", cause),
+        try: () => env.DELIVERY_QUEUE.send(delivery),
       }).pipe(Effect.asVoid),
     repository: {
       cursor: (subscriptionId) =>
@@ -319,8 +316,8 @@ function createPollingPorts(env: WorkerEnv): PollingPorts {
         ).pipe(
           Effect.map((result) =>
             result.results.map((row) => ({
-              deliveryId: row.delivery_id,
               announcementId: row.announcement_id,
+              deliveryId: row.delivery_id,
             }))
           )
         ),
@@ -341,7 +338,7 @@ function createPollingPorts(env: WorkerEnv): PollingPorts {
         ).pipe(
           Effect.catchIf(
             (error) => error.status === 404,
-            () => Effect.succeed<undefined>(undefined)
+            () => Effect.succeed(null)
           )
         ),
     },
@@ -570,13 +567,13 @@ function resend(
         throw apiError("Resend configuration is incomplete", 500, false);
       }
       const response = await fetch("https://api.resend.com/emails", {
-        method: "POST",
+        body: JSON.stringify(payload),
         headers: {
           Authorization: `Bearer ${Redacted.value(Redacted.make(env.RESEND_API_KEY))}`,
           "Content-Type": "application/json",
           "Idempotency-Key": key,
         },
-        body: JSON.stringify(payload),
+        method: "POST",
       });
       if (!response.ok) {
         const retryable =
@@ -660,13 +657,12 @@ async function authorized(
       new TextEncoder().encode(Redacted.value(expected))
     ),
   ]);
-  const a = new Uint8Array(left);
-  const b = new Uint8Array(right);
-  let mismatch = a.length ^ b.length;
-  for (let index = 0; index < a.length; index += 1) {
-    mismatch |= (a[index] ?? 0) ^ (b[index] ?? 0);
-  }
-  return mismatch === 0 && supplied.length > 0;
+  return (
+    crypto.subtle.timingSafeEqual(
+      new Uint8Array(left),
+      new Uint8Array(right)
+    ) && supplied.length > 0
+  );
 }
 
 function d1<A>(

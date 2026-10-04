@@ -86,12 +86,19 @@ export const processQueue = async (
         return;
       }
       if (batch.queue === deadLetterQueueName) {
-        const failed = await Effect.runPromise(
+        const exit = await Effect.runPromiseExit(
           operations.failDeadLetter(payload.value.deliveryId)
         );
+        if (exit._tag === "Failure") {
+          console.error(
+            JSON.stringify({ event: "delivery.dead_letter_failed" })
+          );
+          message.retry({ delaySeconds: 60 });
+          return;
+        }
         console.error(
           JSON.stringify({
-            event: failed
+            event: exit.value
               ? "delivery.dead_lettered"
               : "delivery.dead_letter_deferred",
           })

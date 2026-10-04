@@ -107,6 +107,44 @@ const queueBatch = (
 });
 
 describe("delivery claim", () => {
+  it("retries a dead-letter message when recording its failure fails", async () => {
+    const started = await Effect.runPromise(Deferred.make<boolean>());
+    const release = await Effect.runPromise(Deferred.make<boolean>());
+    const bothClaims = await Effect.runPromise(Deferred.make<boolean>());
+    const counters: DeliveryCounters = {
+      acknowledgements: 0,
+      claims: 0,
+      retries: 0,
+      sends: 0,
+      status: "queued",
+    };
+    const operations: QueueOperations = {
+      ...makeQueueOperations(started, release, bothClaims, counters),
+      failDeadLetter: () => Effect.fail(new Error("database unavailable")),
+    };
+    const batch: MessageBatch<unknown> = {
+      ...queueBatch(
+        [
+          queueMessage(
+            () => {
+              counters.acknowledgements += 1;
+            },
+            () => {
+              counters.retries += 1;
+            }
+          ),
+        ],
+        counters
+      ),
+      queue: "dead-letter",
+    };
+
+    await processQueue(batch, "dead-letter", operations);
+
+    expect(counters.acknowledgements).toBe(0);
+    expect(counters.retries).toBe(1);
+  });
+
   it("sends once when duplicate queue messages arrive concurrently", async () => {
     const started = await Effect.runPromise(Deferred.make<boolean>());
     const release = await Effect.runPromise(Deferred.make<boolean>());

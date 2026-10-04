@@ -137,7 +137,7 @@ export const makeRepository = (env: WorkerEnv): PollingPorts["repository"] => ({
         .bind(id)
         .run()
     ).pipe(Effect.asVoid),
-  pendingDeliveries: (id) =>
+  pendingDeliveries: () =>
     Effect.gen(function* pendingDeliveriesEffect() {
       yield* d1(() =>
         env.DB.prepare(
@@ -146,10 +146,8 @@ export const makeRepository = (env: WorkerEnv): PollingPorts["repository"] => ({
       );
       const result = yield* d1(() =>
         env.DB.prepare(
-          "SELECT d.id AS delivery_id, d.announcement_id FROM deliveries d JOIN announcements a ON a.id = d.announcement_id WHERE a.subscription_id = ? AND d.status = 'pending' ORDER BY d.created_at LIMIT 500"
-        )
-          .bind(id)
-          .all<DeliveryRow>()
+          "SELECT d.id AS delivery_id, d.announcement_id FROM deliveries d JOIN announcements a ON a.id = d.announcement_id WHERE d.status = 'pending' ORDER BY d.created_at LIMIT 500"
+        ).all<DeliveryRow>()
       );
       return result.results.map((row) => ({
         announcementId: row.announcement_id,

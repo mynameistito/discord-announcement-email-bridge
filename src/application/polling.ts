@@ -56,9 +56,10 @@ export interface PollingPorts {
       announcements: readonly Announcement[],
       cursor: string | undefined
     ) => Effect.Effect<void, BridgeInfrastructureError>;
-    readonly pendingDeliveries: (
-      subscriptionId: string
-    ) => Effect.Effect<readonly DeliveryRef[], BridgeInfrastructureError>;
+    readonly pendingDeliveries: () => Effect.Effect<
+      readonly DeliveryRef[],
+      BridgeInfrastructureError
+    >;
     readonly markEnqueued: (
       deliveryId: string
     ) => Effect.Effect<void, BridgeInfrastructureError>;

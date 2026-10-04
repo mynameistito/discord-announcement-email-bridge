@@ -24,7 +24,7 @@ export const persistAndEnqueue = (
       announcements,
       highWater
     );
-    const pending = yield* ports.repository.pendingDeliveries(subscription.id);
+    const pending = yield* ports.repository.pendingDeliveries();
     for (const delivery of pending) {
       yield* ports.enqueue(delivery);
       yield* ports.repository.markEnqueued(delivery.deliveryId);

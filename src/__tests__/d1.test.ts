@@ -3,7 +3,7 @@ import { Database } from "bun:sqlite";
 import { Effect } from "effect";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { makeRepository } from "@/adapters/d1";
+import { claimDelivery, makeRepository } from "@/adapters/d1";
 import type { WorkerEnv } from "@/alchemy.run";
 
 const database = new Database(":memory:");
@@ -116,6 +116,10 @@ describe("D1 polling repository", () => {
         'old-delivery', 'old-announcement', 'queued', 'expired-token',
         datetime('now', '-1 minute')
       );
+      INSERT INTO announcements (id, subscription_id)
+        VALUES ('claim-announcement', 'active-subscription');
+      INSERT INTO deliveries (id, announcement_id, status)
+        VALUES ('claim-delivery', 'claim-announcement', 'queued');
     `);
   });
 
@@ -139,5 +143,36 @@ describe("D1 polling repository", () => {
         )
         .get()
     ).toStrictEqual({ claim_token: null, status: "pending" });
+  });
+
+  it("claims queued deliveries, reports live leases, and reclaims expired leases", async () => {
+    const firstClaim = await Effect.runPromise(
+      claimDelivery(env, "claim-delivery", "claim-announcement", "first-token")
+    );
+    const competingClaim = await Effect.runPromise(
+      claimDelivery(
+        env,
+        "claim-delivery",
+        "claim-announcement",
+        "competing-token"
+      )
+    );
+    database.exec(
+      "UPDATE deliveries SET claim_expires_at = datetime('now', '-1 minute') WHERE id = 'claim-delivery'"
+    );
+    const recoveredClaim = await Effect.runPromise(
+      claimDelivery(
+        env,
+        "claim-delivery",
+        "claim-announcement",
+        "recovery-token"
+      )
+    );
+
+    expect([firstClaim, competingClaim, recoveredClaim]).toStrictEqual([
+      "claimed",
+      "in_flight",
+      "claimed",
+    ]);
   });
 });

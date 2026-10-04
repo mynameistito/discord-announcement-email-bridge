@@ -102,7 +102,6 @@ export const deliver = (
         .run()
     );
     yield* Effect.logInfo("delivery.sent", {
-      deliveryId,
       resendEmailId: response.id,
     });
   });

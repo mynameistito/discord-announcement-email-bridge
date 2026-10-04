@@ -54,7 +54,6 @@ export const processQueue = async (
         await Effect.runPromise(failDeadLetter(env, payload.value.deliveryId));
         console.error(
           JSON.stringify({
-            deliveryId: payload.value.deliveryId,
             event: "delivery.dead_lettered",
           })
         );
@@ -75,7 +74,6 @@ export const processQueue = async (
       if (recorded._tag === "Failure") {
         console.error(
           JSON.stringify({
-            deliveryId: payload.value.deliveryId,
             event: "delivery.record_failed",
           })
         );
@@ -84,7 +82,6 @@ export const processQueue = async (
         console.warn(
           JSON.stringify({
             attempt: message.attempts,
-            deliveryId: payload.value.deliveryId,
             error: errorMessage,
             event: "delivery.retry",
           })
@@ -93,7 +90,6 @@ export const processQueue = async (
       } else {
         console.error(
           JSON.stringify({
-            deliveryId: payload.value.deliveryId,
             error: errorMessage,
             event: "delivery.failed",
           })

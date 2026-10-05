@@ -40,7 +40,8 @@ jobs:
           CF_ACCESS_CLIENT_ID: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/add more/CF_ACCESS_CLIENT_ID
           CF_ACCESS_CLIENT_SECRET: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/add more/CF_ACCESS_CLIENT_SECRET
 
-      - run: bun install --frozen-lockfile
+      - id: install
+        run: bun install --frozen-lockfile
 
       - name: Deploy isolated E2E Worker
         id: deploy
@@ -62,9 +63,11 @@ jobs:
         run: bunx alchemy deploy --stage "$ALCHEMY_STAGE" --yes
 
       - name: Publish and verify test announcement
+        id: e2e
         env:
           E2E_MODE: remote
           E2E_WORKER_URL: https://discord-announcement-email-bridge-e2e-${{ github.run_id }}-${{ github.run_attempt }}.mynameistito.workers.dev
+          NO_COLOR: "1"
           DISCORD_PREVIEW_BOT_TOKEN: ${{ steps.op_e2e.outputs.DISCORD_PREVIEW_BOT_TOKEN }}
           DISCORD_GUILD_ID: ${{ steps.op_e2e.outputs.DISCORD_GUILD_ID }}
           DISCORD_E2E_ANNOUNCEMENT_CHANNEL_ID: ${{ steps.op_e2e.outputs.DISCORD_E2E_ANNOUNCEMENT_CHANNEL_ID }}
@@ -76,12 +79,73 @@ jobs:
           ADMIN_PREVIEW_TOKEN: ${{ steps.op_e2e.outputs.ADMIN_PREVIEW_TOKEN }}
           CF_ACCESS_CLIENT_ID: ${{ steps.op_e2e.outputs.CF_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ steps.op_e2e.outputs.CF_ACCESS_CLIENT_SECRET }}
-        run: bun run e2e
+        run: |
+          set -o pipefail
+          bun run e2e 2>&1 | tee "$RUNNER_TEMP/e2e.log"
 
       - name: Destroy isolated E2E Worker
+        id: destroy
         if: ${{ always() && steps.op_e2e.outcome == 'success' }}
         env:
           ALCHEMY_STAGE: e2e-${{ github.run_id }}-${{ github.run_attempt }}
           CLOUDFLARE_API_TOKEN: ${{ steps.op_e2e.outputs.CLOUDFLARE_PREVIEW_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ steps.op_e2e.outputs.CLOUDFLARE_PREVIEW_ACCOUNT_ID }}
         run: bunx alchemy destroy --stage "$ALCHEMY_STAGE" --yes
+
+      - name: Publish E2E summary
+        if: ${{ always() }}
+        env:
+          JOB_STATUS: ${{ job.status }}
+          OP_OUTCOME: ${{ steps.op_e2e.outcome }}
+          INSTALL_OUTCOME: ${{ steps.install.outcome }}
+          DEPLOY_OUTCOME: ${{ steps.deploy.outcome }}
+          E2E_OUTCOME: ${{ steps.e2e.outcome }}
+          DESTROY_OUTCOME: ${{ steps.destroy.outcome }}
+          ALCHEMY_STAGE: e2e-${{ github.run_id }}-${{ github.run_attempt }}
+          E2E_WORKER_URL: https://discord-announcement-email-bridge-e2e-${{ github.run_id }}-${{ github.run_attempt }}.mynameistito.workers.dev
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        shell: bash
+        run: |
+          status_mark() {
+            case "$1" in
+              success) printf '✅' ;;
+              skipped) printf '⏭️' ;;
+              cancelled) printf '⏹️' ;;
+              *) printf '❌' ;;
+            esac
+          }
+
+          if [ "$JOB_STATUS" = "success" ] && [ "$E2E_OUTCOME" = "success" ]; then
+            echo "## ✅ Discord E2E passed" >> "$GITHUB_STEP_SUMMARY"
+            echo "The complete Discord → Worker → Resend flow completed successfully." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "## ❌ Discord E2E failed" >> "$GITHUB_STEP_SUMMARY"
+            echo "Review the failed lifecycle step and its detailed log output." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          {
+            echo
+            echo "| Lifecycle stage | Result |"
+            echo "| --- | --- |"
+            printf '| 1Password secret loading | %s `%s` |\n' "$(status_mark "$OP_OUTCOME")" "$OP_OUTCOME"
+            printf '| Dependency installation | %s `%s` |\n' "$(status_mark "$INSTALL_OUTCOME")" "$INSTALL_OUTCOME"
+            printf '| Isolated Worker deployment | %s `%s` |\n' "$(status_mark "$DEPLOY_OUTCOME")" "$DEPLOY_OUTCOME"
+            printf '| Discord and Resend E2E test | %s `%s` |\n' "$(status_mark "$E2E_OUTCOME")" "$E2E_OUTCOME"
+            printf '| Isolated Worker cleanup | %s `%s` |\n' "$(status_mark "$DESTROY_OUTCOME")" "$DESTROY_OUTCOME"
+            echo
+            echo "### Deployment details"
+            echo
+            printf -- '- **Stage:** `%s`\n' "$ALCHEMY_STAGE"
+            echo "- **Worker:** [$E2E_WORKER_URL]($E2E_WORKER_URL)"
+            echo "- **Run:** [$RUN_URL]($RUN_URL)"
+            echo
+            echo "### E2E checkpoints"
+            echo
+            echo '```text'
+            if [ -s "$RUNNER_TEMP/e2e.log" ]; then
+              grep -E '^(Checking Discord|Authenticated|Receiver channel|Seeding|Created test|Crossposted|Follower copy|Polling|Poll accepted|E2E passed|E2E failed|E2E script)' "$RUNNER_TEMP/e2e.log" || true
+            else
+              echo "No E2E runner log was produced."
+            fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

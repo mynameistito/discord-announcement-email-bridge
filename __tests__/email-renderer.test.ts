@@ -172,12 +172,20 @@ describe("announcement email rendering", () => {
       html.includes('src="https://cdn.discordapp.com/embed/avatars/1.png"'),
       html.includes('<a href="https://example.com/embed">Rich embed</a>'),
       html.includes('src="https://cdn.discordapp.com/embed/avatars/2.png"'),
+      html.includes(
+        'width="80" valign="top" style="width:80px;padding:0 0 12px 12px"'
+      ),
+      html.includes(
+        "width:80px;height:80px;max-width:80px;object-fit:cover;border-radius:8px"
+      ),
       html.includes("E2E footer · 12:00 05/10/2026 UTC"),
-      html.includes(`src="${imageUrl}"`),
+      html.includes(
+        `src="${imageUrl}" alt="Rich embed" style="display:block;max-width:100%;height:auto;margin:12px 0"`
+      ),
       !html.includes('alt="photo.jpg"'),
       text.includes("E2E author"),
       text.includes("E2E footer"),
-    ]).toStrictEqual(Array.from({ length: 11 }, () => true));
+    ]).toStrictEqual(Array.from({ length: 13 }, () => true));
   });
 
   it("escapes malformed timestamps before inserting them into HTML", () => {

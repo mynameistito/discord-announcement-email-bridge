@@ -25,7 +25,7 @@ The bot must be installed in the destination guild and able to read the channel 
 5. Enable Discord **Developer Mode** and copy the destination server and channel IDs into `DISCORD_GUILD_ID` and `DISCORD_TARGET_CHANNEL_ID`.
 6. In the source server's Announcement Channel, use **Follow** and select the destination server and channel. The bridge ignores ordinary messages posted directly to the destination channel.
 
-The bot must be able to read message content, embeds, and attachments. If Discord withholds those fields because the privileged intent is not enabled, the bridge reports an operational error instead of sending an empty email.
+The bot must be able to read message content, embeds, and attachments. If Discord withholds those fields because the privileged intent is not enabled, the bridge logs an `announcement.content_unavailable` warning and skips that announcement while advancing the cursor; it will not be retried. Enable the intent before polling.
 
 ## Environment variables
 

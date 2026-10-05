@@ -10,4 +10,9 @@ export default defineConfig({
       "@tests": fileURLToPath(new URL("__tests__", import.meta.url)),
     },
   },
+  test: {
+    coverage: {
+      reporter: ["text", "lcov"],
+    },
+  },
 });

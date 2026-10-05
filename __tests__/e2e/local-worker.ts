@@ -2,15 +2,19 @@ import type { Buffer } from "node:buffer";
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
 import { once } from "node:events";
+import type { EventEmitter } from "node:events";
 import process from "node:process";
 
 import { request, waitUntil } from "@tests/e2e/http.ts";
 import type { E2EConfig, LogTone } from "@tests/e2e/types.ts";
 
 type Log = (message: string, tone?: LogTone) => void;
+type ExitableChild = EventEmitter &
+  Pick<ChildProcess, "exitCode" | "signalCode">;
 
-const hasExited = (child: ChildProcess): boolean =>
-  child.exitCode !== null || child.signalCode !== null;
+const hasExited = (
+  child: Pick<ChildProcess, "exitCode" | "signalCode">
+): boolean => child.exitCode !== null || child.signalCode !== null;
 
 const hasRunningProcessGroup = (child: ChildProcess): boolean => {
   if (process.platform === "win32" || !child.pid) {
@@ -24,18 +28,25 @@ const hasRunningProcessGroup = (child: ChildProcess): boolean => {
   }
 };
 
-const waitForExit = async (
-  child: ChildProcess,
+/**
+ * Wait for a child process to exit, returning false when the timeout expires.
+ * @param child - Child process or compatible event emitter.
+ * @param timeout - Maximum wait in milliseconds.
+ * @returns Whether the child exited before the timeout.
+ */
+export const waitForExit = async (
+  child: ExitableChild,
   timeout: number
 ): Promise<boolean> => {
   if (hasExited(child)) {
     return true;
   }
+  const timeoutSignal = AbortSignal.timeout(timeout);
   try {
-    await once(child, "exit", { signal: AbortSignal.timeout(timeout) });
+    await once(child, "exit", { signal: timeoutSignal });
     return true;
   } catch (error) {
-    if (error instanceof DOMException && error.name === "TimeoutError") {
+    if (timeoutSignal.aborted) {
       return false;
     }
     throw error;

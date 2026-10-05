@@ -13,7 +13,7 @@ The project uses Alchemy to provision a Worker, D1 database, delivery Queues, an
 
 ## Required credentials
 
-The deployment workflow reads the `discord-announcement-email-bridge` item in the `github-actions` 1Password vault.
+The deployment workflow reads the `discord-announcement-email-bridge` item in the `github-actions` 1Password vault. Production deploys use the application fields below. PR previews load only the Cloudflare fields and run without Discord, Resend, or admin credentials, so they are infrastructure previews and cannot poll or send email.
 
 Configure these fields before enabling deployment:
 
@@ -23,15 +23,14 @@ Configure these fields before enabling deployment:
 | `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`, `DISCORD_TARGET_CHANNEL_ID` | Production Discord polling. |
 | `EMAIL_TO`, `RESEND_API_KEY`, `EMAIL_FROM_NAME`, `EMAIL_FROM_EMAIL` | Production email delivery. |
 | `ADMIN_TOKEN` | Production admin routes. |
-| `DISCORD_PREVIEW_BOT_TOKEN`, `DISCORD_PREVIEW_TARGET_CHANNEL_ID` | Preview bot and test destination channel. Previews use the production `DISCORD_GUILD_ID`. |
-| `RESEND_PREVIEW_API_KEY` | Preview email delivery. |
-| `ADMIN_PREVIEW_TOKEN` | Preview admin routes. |
 
 Also add the repository Actions secret `OP_SERVICE_ACCOUNT_TOKEN`. Scope that 1Password service account to read only the `github-actions` vault. `GITHUB_TOKEN` is provided by GitHub.
 
 Production and PR deployments share the Cloudflare account and API token, but only the trusted deployment workflow receives the deployment credentials. Alchemy isolates each stage's Worker, D1 database, and Queues. Use a test recipient and preview-restricted sender/key for preview work.
 
 The Cloudflare API token needs account-scoped write access for Workers Scripts, D1, and Queues. Include Account Settings Read if the token provider requires account metadata lookup. Workers Routes access is not needed unless a custom route or domain is added. See [Cloudflare API token permissions](https://developers.cloudflare.com/fundamentals/api/reference/permissions/) and the [Workers permissions guide](https://developers.cloudflare.com/workers/authorization/workers/).
+
+The manually triggered E2E workflow uses separate non-production fields: `CLOUDFLARE_PREVIEW_API_TOKEN`, `CLOUDFLARE_PREVIEW_ACCOUNT_ID`, `DISCORD_PREVIEW_BOT_TOKEN`, `DISCORD_GUILD_ID`, `DISCORD_E2E_ANNOUNCEMENT_CHANNEL_ID`, `DISCORD_E2E_RECEIVER_CHANNEL_ID`, `EMAIL_TO`, `RESEND_PREVIEW_API_KEY`, `EMAIL_FROM_NAME`, `EMAIL_FROM_EMAIL`, `ADMIN_PREVIEW_TOKEN`, `CF_ACCESS_CLIENT_ID`, and `CF_ACCESS_CLIENT_SECRET`. These fields are for the [live E2E test](operations.md#automated-live-e2e-test), not ordinary PR previews.
 
 ## Manual deployment
 

@@ -34,7 +34,9 @@ jobs:
         with:
           bun-version: 1.4.2
       - run: bun install --frozen-lockfile
-      - run: ${{ matrix.command }}
+      - run: $TASK_COMMAND
+        env:
+          TASK_COMMAND: ${{ matrix.command }}
       - name: Upload coverage to Codecov
         if: matrix.name == 'Test' && env.CODECOV_TOKEN_AVAILABLE == 'true'
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1

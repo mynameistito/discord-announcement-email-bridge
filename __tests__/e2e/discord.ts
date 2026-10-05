@@ -193,12 +193,39 @@ const preservesRichEmbed = (
 };
 
 /**
+ * Check whether a follower copy has propagated with all expected content.
+ * @param message - Message returned from the receiver channel.
+ * @param messageId - Source announcement identifier.
+ * @param expectedFilename - Optional upload filename to verify in the copy.
+ * @param expectedEmbedTitle - Optional rich embed title to verify in the copy.
+ * @returns Whether this is a complete follower copy for the announcement.
+ */
+export const isCompleteFollowerCopy = (
+  message: DiscordMessage,
+  messageId: string,
+  expectedFilename?: string,
+  expectedEmbedTitle?: string
+): boolean => {
+  if (!message.id || message.message_reference?.message_id !== messageId) {
+    return false;
+  }
+  if (
+    expectedFilename &&
+    !message.attachments?.some(({ filename }) => filename === expectedFilename)
+  ) {
+    return false;
+  }
+  return !expectedEmbedTitle || preservesRichEmbed(message, expectedEmbedTitle);
+};
+
+/**
  * Crosspost the announcement and wait for its follower-channel copy.
  * @param config - E2E Discord credentials and channel IDs.
  * @param messageId - Original announcement identifier.
  * @param signal - Workflow cancellation signal.
  * @param log - Progress logger.
  * @param expectedFilename - Optional upload filename to verify in the copy.
+ * @param expectedEmbedTitle - Optional rich embed title to verify in the copy.
  * @returns The follower copy message identifier.
  */
 export const crosspostAnnouncement = async (
@@ -225,29 +252,30 @@ export const crosspostAnnouncement = async (
         signal
       ),
     (items) =>
-      items.some((item) => item.message_reference?.message_id === messageId),
+      items.some((item) =>
+        isCompleteFollowerCopy(
+          item,
+          messageId,
+          expectedFilename,
+          expectedEmbedTitle
+        )
+      ),
     2000,
     60_000,
-    "Discord did not create the follower crosspost within 60 seconds",
+    "Discord follower copy did not become complete with the expected content within 60 seconds",
     signal
   );
-  const copy = messages.find(
-    (item) => item.message_reference?.message_id === messageId
+  const copy = messages.find((item) =>
+    isCompleteFollowerCopy(
+      item,
+      messageId,
+      expectedFilename,
+      expectedEmbedTitle
+    )
   );
   if (!copy?.id) {
-    throw new Error("Discord follower copy did not include a message ID");
-  }
-  if (
-    expectedFilename &&
-    !copy.attachments?.some(({ filename }) => filename === expectedFilename)
-  ) {
     throw new Error(
-      `Discord follower copy did not include attachment ${expectedFilename}`
-    );
-  }
-  if (expectedEmbedTitle && !preservesRichEmbed(copy, expectedEmbedTitle)) {
-    throw new Error(
-      `Discord follower copy did not preserve the rich embed fields for ${expectedEmbedTitle}`
+      "Discord follower copy did not become complete with the expected content"
     );
   }
   return copy.id;

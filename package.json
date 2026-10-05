@@ -20,10 +20,9 @@
   },
   "type": "module",
   "scripts": {
-    "typecheck": "tsc --noEmit && tsc --noEmit --project scripts/tsconfig.json",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "e2e": "bun scripts/e2e.ts",
-    "typecheck:e2e": "bunx tsc --noEmit --project scripts/tsconfig.json",
     "knip": "knip",
     "check": "ultracite check",
     "format": "ultracite fix",

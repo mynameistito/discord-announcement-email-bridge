@@ -5,7 +5,7 @@
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "lib": ["ES2023", "WebWorker"],
-    "types": ["@cloudflare/workers-types"],
+    "types": ["@cloudflare/workers-types", "node"],
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
@@ -20,6 +20,5 @@
     },
     "noEmit": true
   },
-  "include": ["src/**/*.ts", "alchemy.run.ts"],
-  "exclude": ["src/__tests__/e2e/**"]
+  "include": ["src/**/*.ts", "scripts/**/*.ts", "alchemy.run.ts"]
 }

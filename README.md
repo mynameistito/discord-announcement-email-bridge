@@ -104,97 +104,27 @@ bunx alchemy deploy --stage $env:ALCHEMY_STAGE
 Never use a production profile or stage for preview builds. Only the `prod` stage receives the one-minute Cron; local and PR stages have no automatic polling. D1 migrations are applied by Alchemy. The dead-letter queue name is bound directly from the stage-specific Alchemy queue resource, so previews do not need a manually copied production queue name.
 
 - `GET /healthz` reports basic liveness and the stage/version.
-- `GET /admin/status` requires `Authorization: Bearer <ADMIN_TOKEN>` and reports cursor activity and delivery counts.
+- `GET /admin/status` requires `Authorization: Bearer <ADMIN_TOKEN>` and reports cursor activity and delivery counts. Supplying `?discordMessageId=<id>` also reports counts for the follower copy's delivery.
 - `POST /admin/poll` runs discovery immediately.
 - `POST /admin/replay` resets terminal failed deliveries to pending and queues them again. Review the failure cause before replaying; Resend idempotency keys are retained for 24 hours, while D1 remains the long-term deduplication source.
 
 Logs contain event names, delivery IDs, and sanitized error messages; do not add email addresses, message contents, or tokens to logs. An edited Discord message does not trigger a new email. A deleted message cannot recall mail already sent.
 
-### Local end-to-end test
+### Automated live end-to-end test
 
-Run the full test only against a dedicated non-production Alchemy stage, Discord test bot and followed test channel, Resend test key/sender, and test recipient. Never use the `prod` stage or production credentials. The test sends an email to the configured test recipient. Alchemy stages isolate the Worker, D1 database, and Queues; non-production stages have no Cron Trigger.
+The live E2E publishes a uniquely marked post to a dedicated Discord Announcement Channel, crossposts it, verifies that the receiver already follows that source, confirms the follower copy arrives, polls the bridge, and waits for `/admin/status` to record a successful Resend delivery. It leaves the Discord messages in place as an audit trail and sends a real email to the configured test recipient. Never use production channels, recipient, or Resend credentials.
 
-Reuse the shared `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` fields already used by the deployment workflow. Do not replace them with E2E-specific values. Add only the dedicated test application fields below to the `discord-announcement-email-bridge` item in the `github-actions` 1Password vault; do not copy production Discord, recipient, or Resend credentials:
+The source and receiver channels must belong to `DISCORD_GUILD_ID`. The preview bot must be installed in that guild, have `VIEW_CHANNEL`, `SEND_MESSAGES`, and `MANAGE_MESSAGES` in the source Announcement Channel, and have `VIEW_CHANNEL`, `READ_MESSAGE_HISTORY`, and `MANAGE_WEBHOOKS` in the receiver channel. The test reads the existing `DISCORD_PREVIEW_BOT_TOKEN`, `RESEND_PREVIEW_API_KEY`, `ADMIN_PREVIEW_TOKEN`, `DISCORD_GUILD_ID`, `EMAIL_TO`, `EMAIL_FROM_NAME`, and `EMAIL_FROM_EMAIL` fields, plus `DISCORD_E2E_ANNOUNCEMENT_CHANNEL_ID` and `DISCORD_E2E_RECEIVER_CHANNEL_ID`, from the `discord-announcement-email-bridge` item in the `github-actions` 1Password vault. It also loads `CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET` for protected Worker URLs. Set `EMAIL_TO` to the test mailbox. Add `CLOUDFLARE_PREVIEW_API_TOKEN` and `CLOUDFLARE_PREVIEW_ACCOUNT_ID` as new fields on this vault item; use a preview-scoped token and the preview account ID, not the shared production deployment credentials. `OP_SERVICE_ACCOUNT_TOKEN` is a repository secret.
 
-- `DISCORD_E2E_BOT_TOKEN`, `DISCORD_E2E_GUILD_ID`, `DISCORD_E2E_TARGET_CHANNEL_ID`
-- `EMAIL_E2E_TO`, `RESEND_E2E_API_KEY`, `EMAIL_E2E_FROM_NAME`, `EMAIL_E2E_FROM_EMAIL`
-- `ADMIN_E2E_TOKEN`
-- `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET` if Cloudflare Access protects the test Worker hostname
-
-Install and sign in to the 1Password CLI (`op`), then load these fields into the current PowerShell session. The commands do not print secret values:
+For a local run, install and sign in to the 1Password CLI, then materialize the ignored `.env.e2e` from the checked-in field-reference template and run the test:
 
 ```powershell
-$item = "op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4"
-$env:CLOUDFLARE_API_TOKEN = op read "$item/CLOUDFLARE_API_TOKEN"
-$env:CLOUDFLARE_ACCOUNT_ID = op read "$item/CLOUDFLARE_ACCOUNT_ID"
-$env:DISCORD_BOT_TOKEN = op read "$item/DISCORD_E2E_BOT_TOKEN"
-$env:DISCORD_GUILD_ID = op read "$item/DISCORD_E2E_GUILD_ID"
-$env:DISCORD_TARGET_CHANNEL_ID = op read "$item/DISCORD_E2E_TARGET_CHANNEL_ID"
-$env:EMAIL_TO = op read "$item/EMAIL_E2E_TO"
-$env:RESEND_API_KEY = op read "$item/RESEND_E2E_API_KEY"
-$env:EMAIL_FROM_NAME = op read "$item/EMAIL_E2E_FROM_NAME"
-$env:EMAIL_FROM_EMAIL = op read "$item/EMAIL_E2E_FROM_EMAIL"
-$env:ADMIN_TOKEN = op read "$item/ADMIN_E2E_TOKEN"
-# If the test Worker is behind Cloudflare Access, also load:
-# $env:CF_ACCESS_CLIENT_ID = op read "$item/CF_ACCESS_CLIENT_ID"
-# $env:CF_ACCESS_CLIENT_SECRET = op read "$item/CF_ACCESS_CLIENT_SECRET"
-$env:ALCHEMY_STAGE = "e2e-myname"
-$env:STAGE = $env:ALCHEMY_STAGE
+op inject -i .env.e2e.tpl -o .env.e2e
+bun --env-file=.env.e2e run e2e
 ```
 
-1. Confirm the test bot can read the test destination channel and its follower webhook metadata, and that a test source Announcement Channel is followed into it. The bot needs the permissions described above, limited to the test channel.
-2. Deploy the isolated stage and note the URL printed by Alchemy:
+This starts `alchemy dev` in the `e2e-local` stage, runs the live test against its local Worker, stops the dev process, and returns to the shell. To select an Alchemy profile for local dev, pass `--profile <name>` (for example, `bun --env-file=.env.e2e run e2e --profile preview`). It does not deploy or destroy a remote stage.
 
-   ```powershell
-   if ($env:ALCHEMY_STAGE -notmatch '^e2e-[a-z0-9]+(-[a-z0-9]+)*$') {
-     throw "Refusing to deploy: ALCHEMY_STAGE must be a dedicated e2e-* stage."
-   }
-   bunx alchemy plan --stage $env:ALCHEMY_STAGE
-   bunx alchemy deploy --stage $env:ALCHEMY_STAGE
-   ```
-
-3. Set the URL printed by Alchemy and build headers for admin calls. If Access protects the Worker, the same headers also include its service token:
-
-   ```powershell
-   $url = Read-Host "Non-production Worker URL"
-   $headers = @{ Authorization = "Bearer $env:ADMIN_TOKEN" }
-   $healthHeaders = @{}
-   if ($env:CF_ACCESS_CLIENT_ID -and $env:CF_ACCESS_CLIENT_SECRET) {
-     $headers["CF-Access-Client-Id"] = $env:CF_ACCESS_CLIENT_ID
-     $headers["CF-Access-Client-Secret"] = $env:CF_ACCESS_CLIENT_SECRET
-     $healthHeaders["CF-Access-Client-Id"] = $env:CF_ACCESS_CLIENT_ID
-     $healthHeaders["CF-Access-Client-Secret"] = $env:CF_ACCESS_CLIENT_SECRET
-   }
-   Invoke-RestMethod -Method Get -Uri "$url/healthz" -Headers $healthHeaders
-   Invoke-RestMethod -Method Get -Uri "$url/admin/status" -Headers $headers
-   ```
-
-   `/admin/status` reports delivery totals and a global `lastPoll` timestamp; it does not show subscription or cursor state. On a fresh E2E stage with no saved cursor, the first poll creates the subscription, seeds at the latest observed message, and skips history. Only run it after confirming the test channel has no unseen announcements you intend to deliver:
-
-   ```powershell
-   Invoke-RestMethod -Method Post -Uri "$url/admin/poll" -Headers $headers
-   ```
-
-4. Publish one test announcement in the followed source channel and confirm its crosspost appears in the test destination channel. Then invoke `Invoke-RestMethod -Method Post -Uri "$url/admin/poll" -Headers $headers`. **A poll processes all unseen eligible crossposts for enabled subscriptions, not just the announcement you intend to test.** Keep the test destination and recipient isolated accordingly.
-5. Check the test mailbox, Resend delivery logs, and `/admin/status`. Queue delivery is asynchronous; allow pending deliveries to finish. A normal destination-channel message is not a valid test. Do not use `/admin/replay` as a smoke test; it can resend previously failed deliveries.
-
-When finished, destroy only this test stage and clear the loaded values from the shell:
-
-```powershell
-if ($env:ALCHEMY_STAGE -notmatch '^e2e-[a-z0-9]+(-[a-z0-9]+)*$') {
-  throw "Refusing to destroy: ALCHEMY_STAGE must be the dedicated e2e-* stage."
-}
-bunx alchemy destroy --stage $env:ALCHEMY_STAGE
-if ($LASTEXITCODE -ne 0) {
-  throw "Alchemy destroy failed; credentials remain available so you can retry."
-}
-"CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "DISCORD_BOT_TOKEN", "DISCORD_GUILD_ID", "DISCORD_TARGET_CHANNEL_ID", "EMAIL_TO", "RESEND_API_KEY", "EMAIL_FROM_NAME", "EMAIL_FROM_EMAIL", "ADMIN_TOKEN", "CF_ACCESS_CLIENT_ID", "CF_ACCESS_CLIENT_SECRET", "ALCHEMY_STAGE", "STAGE" | ForEach-Object {
-  Remove-Item "Env:$_" -ErrorAction SilentlyContinue
-}
-Remove-Variable headers -ErrorAction SilentlyContinue
-Remove-Variable healthHeaders -ErrorAction SilentlyContinue
-```
-
-PR CI has no credentials and does not run the poll or send email. It tests the secret-free `/healthz` handler and builds the Worker artifact. The pinned `mynameistito/alchemy-deploy` action does not expose its resolved preview URL as an output; its configured URL pattern is only used internally for deployment reporting. Therefore CI does not claim to smoke-test the deployed PR runtime. Adding that safely requires a stable URL output or another trusted way to resolve the URL from the deployment action.
+For GitHub Actions, manually run **Actions → Discord E2E → Run workflow**. It creates a unique non-production Alchemy stage, runs the same test against it, and destroys only that stage afterward. The E2E Worker URL currently uses the `mynameistito.workers.dev` account subdomain; update `.github/workflows/e2e.yml` if the Workers account or configured subdomain changes. Regular CI and pull requests never receive E2E credentials or publish messages.
 
 See [ADR 0001](docs/adr/0001-polling-and-durable-delivery.md) for the polling, classification, and delivery design.

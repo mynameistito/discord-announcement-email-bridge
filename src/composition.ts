@@ -85,10 +85,12 @@ export const consumeQueue = (batch: MessageBatch<unknown>, env: WorkerEnv) => {
  * @param method - HTTP method of the request.
  * @param pathname - Request path to route.
  * @param env - Worker bindings for the admin operation.
+ * @param discordMessageId - Optional follower-copy ID to scope delivery status to.
  * @returns The selected admin HTTP response.
  */
 export const adminResponse = (
   method: string,
   pathname: string,
-  env: WorkerEnv
-) => createAdminResponse(method, pathname, env, poll);
+  env: WorkerEnv,
+  discordMessageId?: string
+) => createAdminResponse(method, pathname, env, poll, discordMessageId);

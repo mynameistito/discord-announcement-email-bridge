@@ -1,0 +1,87 @@
+name: Discord E2E
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2
+
+      - uses: 1password/load-secrets-action@70062d7a876d3eb6334754fa26efd2fbd90c32f2 # v5.0.1
+        id: op_e2e
+        with:
+          version: 2.34.1
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          CLOUDFLARE_PREVIEW_API_TOKEN: op://github-actions/discord-announcement-email-bridge/CLOUDFLARE_PREVIEW_API_TOKEN
+          CLOUDFLARE_PREVIEW_ACCOUNT_ID: op://github-actions/discord-announcement-email-bridge/CLOUDFLARE_PREVIEW_ACCOUNT_ID
+          DISCORD_PREVIEW_BOT_TOKEN: op://github-actions/discord-announcement-email-bridge/DISCORD_PREVIEW_BOT_TOKEN
+          DISCORD_GUILD_ID: op://github-actions/discord-announcement-email-bridge/DISCORD_GUILD_ID
+          DISCORD_E2E_ANNOUNCEMENT_CHANNEL_ID: op://github-actions/discord-announcement-email-bridge/DISCORD_E2E_ANNOUNCEMENT_CHANNEL_ID
+          DISCORD_E2E_RECEIVER_CHANNEL_ID: op://github-actions/discord-announcement-email-bridge/DISCORD_E2E_RECEIVER_CHANNEL_ID
+          EMAIL_TO: op://github-actions/discord-announcement-email-bridge/EMAIL_TO
+          RESEND_PREVIEW_API_KEY: op://github-actions/discord-announcement-email-bridge/RESEND_PREVIEW_API_KEY
+          EMAIL_FROM_NAME: op://github-actions/discord-announcement-email-bridge/EMAIL_FROM_NAME
+          EMAIL_FROM_EMAIL: op://github-actions/discord-announcement-email-bridge/EMAIL_FROM_EMAIL
+          ADMIN_PREVIEW_TOKEN: op://github-actions/discord-announcement-email-bridge/ADMIN_PREVIEW_TOKEN
+          CF_ACCESS_CLIENT_ID: op://github-actions/discord-announcement-email-bridge/CF_ACCESS_CLIENT_ID
+          CF_ACCESS_CLIENT_SECRET: op://github-actions/discord-announcement-email-bridge/CF_ACCESS_CLIENT_SECRET
+
+      - run: bun install --frozen-lockfile
+
+      - name: Deploy isolated E2E Worker
+        id: deploy
+        env:
+          ALCHEMY_STAGE: e2e-${{ github.run_id }}-${{ github.run_attempt }}
+          STAGE: e2e-${{ github.run_id }}-${{ github.run_attempt }}
+          CLOUDFLARE_API_TOKEN: ${{ steps.op_e2e.outputs.CLOUDFLARE_PREVIEW_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.op_e2e.outputs.CLOUDFLARE_PREVIEW_ACCOUNT_ID }}
+          DISCORD_BOT_TOKEN: ${{ steps.op_e2e.outputs.DISCORD_PREVIEW_BOT_TOKEN }}
+          DISCORD_GUILD_ID: ${{ steps.op_e2e.outputs.DISCORD_GUILD_ID }}
+          DISCORD_TARGET_CHANNEL_ID: ${{ steps.op_e2e.outputs.DISCORD_E2E_RECEIVER_CHANNEL_ID }}
+          SOURCE_GUILD_ID: ${{ steps.op_e2e.outputs.DISCORD_GUILD_ID }}
+          SOURCE_CHANNEL_ID: ${{ steps.op_e2e.outputs.DISCORD_E2E_ANNOUNCEMENT_CHANNEL_ID }}
+          EMAIL_TO: ${{ steps.op_e2e.outputs.EMAIL_TO }}
+          RESEND_API_KEY: ${{ steps.op_e2e.outputs.RESEND_PREVIEW_API_KEY }}
+          EMAIL_FROM_NAME: ${{ steps.op_e2e.outputs.EMAIL_FROM_NAME }}
+          EMAIL_FROM_EMAIL: ${{ steps.op_e2e.outputs.EMAIL_FROM_EMAIL }}
+          ADMIN_TOKEN: ${{ steps.op_e2e.outputs.ADMIN_PREVIEW_TOKEN }}
+        run: bunx alchemy deploy --stage "$ALCHEMY_STAGE" --yes
+
+      - name: Publish and verify test announcement
+        env:
+          E2E_MODE: remote
+          E2E_WORKER_URL: https://discord-announcement-email-bridge-e2e-${{ github.run_id }}-${{ github.run_attempt }}.mynameistito.workers.dev
+          DISCORD_PREVIEW_BOT_TOKEN: ${{ steps.op_e2e.outputs.DISCORD_PREVIEW_BOT_TOKEN }}
+          DISCORD_GUILD_ID: ${{ steps.op_e2e.outputs.DISCORD_GUILD_ID }}
+          DISCORD_E2E_ANNOUNCEMENT_CHANNEL_ID: ${{ steps.op_e2e.outputs.DISCORD_E2E_ANNOUNCEMENT_CHANNEL_ID }}
+          DISCORD_E2E_RECEIVER_CHANNEL_ID: ${{ steps.op_e2e.outputs.DISCORD_E2E_RECEIVER_CHANNEL_ID }}
+          EMAIL_TO: ${{ steps.op_e2e.outputs.EMAIL_TO }}
+          RESEND_PREVIEW_API_KEY: ${{ steps.op_e2e.outputs.RESEND_PREVIEW_API_KEY }}
+          EMAIL_FROM_NAME: ${{ steps.op_e2e.outputs.EMAIL_FROM_NAME }}
+          EMAIL_FROM_EMAIL: ${{ steps.op_e2e.outputs.EMAIL_FROM_EMAIL }}
+          ADMIN_PREVIEW_TOKEN: ${{ steps.op_e2e.outputs.ADMIN_PREVIEW_TOKEN }}
+          CF_ACCESS_CLIENT_ID: ${{ steps.op_e2e.outputs.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ steps.op_e2e.outputs.CF_ACCESS_CLIENT_SECRET }}
+        run: bun run e2e
+
+      - name: Destroy isolated E2E Worker
+        if: ${{ always() && steps.op_e2e.outcome == 'success' }}
+        env:
+          ALCHEMY_STAGE: e2e-${{ github.run_id }}-${{ github.run_attempt }}
+          CLOUDFLARE_API_TOKEN: ${{ steps.op_e2e.outputs.CLOUDFLARE_PREVIEW_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.op_e2e.outputs.CLOUDFLARE_PREVIEW_ACCOUNT_ID }}
+        run: bunx alchemy destroy --stage "$ALCHEMY_STAGE" --yes

@@ -21,7 +21,12 @@ const worker = {
     if (!(await authorized(request, env.ADMIN_TOKEN))) {
       return new Response("Unauthorized", { status: 401 });
     }
-    return adminResponse(request.method, url.pathname, env);
+    return adminResponse(
+      request.method,
+      url.pathname,
+      env,
+      url.searchParams.get("discordMessageId") ?? undefined
+    );
   },
 
   /**

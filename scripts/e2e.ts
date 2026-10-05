@@ -32,12 +32,9 @@ const log = (message: string, tone: LogTone = "info"): void => {
 
   const runnerTemp = process.env.RUNNER_TEMP;
   if (runnerTemp) {
+    const logPath = path.join(runnerTemp, "e2e.log");
     try {
-      appendFileSync(
-        path.join(runnerTemp, "e2e.log"),
-        `${message}\n`,
-        "utf-8"
-      );
+      appendFileSync(logPath, `${message}\n`, "utf-8");
     } catch {
       // Log capture is best-effort and must not affect the E2E outcome.
     }

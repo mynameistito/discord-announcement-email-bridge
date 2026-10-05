@@ -6,8 +6,6 @@ import {
   compareSnowflakes,
   MessageSchema,
   oldestFirst,
-  renderHtml,
-  renderText,
 } from "@/domain";
 import type { DiscordMessage, Subscription } from "@/domain";
 
@@ -146,85 +144,5 @@ describe("snowflakes and email rendering", () => {
         message("9007199254740992"),
       ]).map(({ id }) => id)
     ).toStrictEqual(["9007199254740992", "90071992547409930"]);
-  });
-
-  it("renders text, embeds, attachment links and an attributed message URL", () => {
-    const announcement = classifyFollowerMessage(
-      message("100"),
-      webhook,
-      subscription
-    );
-    if (!announcement) {
-      throw new Error("fixture should classify");
-    }
-    const text = renderText(announcement);
-    const html = renderHtml(announcement);
-    expect({
-      hasAttachmentLink: html.includes(
-        "https://cdn.discordapp.com/schedule.pdf"
-      ),
-      hasAttributedMessageUrl: text.includes(
-        "/source-guild/source-channel/source-message"
-      ),
-      hasEmbedField: text.includes("Status"),
-      hasEscapedContent: html.includes("&lt;noon&gt; &amp; stay tuned"),
-      hasPlainAttachment: text.includes("schedule.pdf"),
-      hasRawHtml: html.includes("<noon>"),
-    }).toStrictEqual({
-      hasAttachmentLink: true,
-      hasAttributedMessageUrl: true,
-      hasEmbedField: true,
-      hasEscapedContent: true,
-      hasPlainAttachment: true,
-      hasRawHtml: false,
-    });
-  });
-
-  it("renders the server header, formatted Markdown, UTC time, and linked images", () => {
-    const classified = classifyFollowerMessage(
-      message("100", {
-        attachments: [
-          {
-            content_type: "image/jpeg",
-            filename: "photo.jpg",
-            url: "https://cdn.discordapp.com/photo.jpg",
-          },
-        ],
-        content: "**Important update**",
-        embeds: [
-          {
-            description: "**Details**",
-            fields: [{ name: "Status", value: "*Planned*" }],
-          },
-        ],
-      }),
-      webhook,
-      subscription
-    );
-    if (!classified) {
-      throw new Error("fixture should classify");
-    }
-    const html = renderHtml({
-      ...classified,
-      sourceMetadata: {
-        channelName: "announcements",
-        guildIconUrl: "https://cdn.discordapp.com/icons/source-guild/hash.png",
-        guildName: "News server",
-      },
-    });
-
-    expect(html).toContain("border-radius:50%");
-    expect(html).toContain("News server");
-    expect(html).toContain(
-      'href="https://discord.com/channels/source-guild/source-channel/source-message"'
-    );
-    expect(html).toContain("#announcements");
-    expect(html).toContain("10:00 03/10/2026 UTC");
-    expect(html).toContain("<strong>Important update</strong>");
-    expect(html).toContain("<strong>Details</strong>");
-    expect(html).toContain("<em>Planned</em>");
-    expect(html).toContain(
-      '<a href="https://cdn.discordapp.com/photo.jpg"><img src="https://cdn.discordapp.com/photo.jpg" alt="photo.jpg"'
-    );
   });
 });

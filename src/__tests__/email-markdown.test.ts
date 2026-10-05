@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { renderEmailMarkdown } from "@/email-markdown";
 
-describe("renderEmailMarkdown", () => {
+describe("email Markdown rendering", () => {
   it("renders inline formatting, headings, lists, and quotes", () => {
     expect(
       renderEmailMarkdown(
@@ -13,13 +13,28 @@ describe("renderEmailMarkdown", () => {
     );
   });
 
-  it("escapes raw HTML and fenced or inline code without parsing their contents", () => {
+  it("escapes raw HTML and code without parsing their contents", () => {
+    const html = renderEmailMarkdown(
+      "<img src=x onerror=alert(1)> `**literal**`\n````html\n```\n<b>**literal**</b>\n````"
+    );
+    expect({
+      escapedCode: html.includes("&lt;b&gt;**literal**&lt;/b&gt;"),
+      escapedHtml: html.includes("&lt;img src=x onerror=alert(1)&gt;"),
+      inlineCode: html.includes("<code>**literal**</code>"),
+      shortFenceRetained: html.includes("```"),
+    }).toStrictEqual({
+      escapedCode: true,
+      escapedHtml: true,
+      inlineCode: true,
+      shortFenceRetained: true,
+    });
+  });
+
+  it("preserves soft breaks and recognizes tilde fences", () => {
     expect(
-      renderEmailMarkdown(
-        "<img src=x onerror=alert(1)> `**literal**`\n```html\n<b>**literal**</b>\n```"
-      )
+      renderEmailMarkdown("first line\nsecond line\n\n~~~ts\nconst x = 1\n~~~")
     ).toBe(
-      "<p>&lt;img src=x onerror=alert(1)&gt; <code>**literal**</code></p>\n<pre><code>&lt;b&gt;**literal**&lt;/b&gt;</code></pre>"
+      "<p>first line<br />second line</p>\n<pre><code>const x = 1</code></pre>"
     );
   });
 

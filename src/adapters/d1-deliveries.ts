@@ -37,14 +37,19 @@ export const updateDeliveryFailure = (
  * Mark an unowned or expired delivery as failed after queue retries are spent.
  * @param env - Worker bindings containing the D1 database.
  * @param id - Durable delivery row identifier.
+ * @param generation - Queue generation tied to this delivery attempt.
  * @returns Whether the guarded update changed a delivery row.
  */
-export const markDeadLetter = (env: WorkerEnv, id: string) =>
+export const markDeadLetter = (
+  env: WorkerEnv,
+  id: string,
+  generation: string
+) =>
   d1(() =>
     env.DB.prepare(
-      "UPDATE deliveries SET status = 'failed', last_error = 'queue_retry_exhausted', claim_token = NULL, claim_expires_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status != 'sent' AND (claim_token IS NULL OR claim_expires_at <= CURRENT_TIMESTAMP)"
+      "UPDATE deliveries SET status = 'failed', last_error = 'queue_retry_exhausted', claim_token = NULL, claim_expires_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND generation = ? AND status = 'queued' AND (claim_token IS NULL OR claim_expires_at <= CURRENT_TIMESTAMP)"
     )
-      .bind(id)
+      .bind(id, generation)
       .run()
   ).pipe(Effect.map((result) => result.meta.changes > 0));
 
@@ -55,28 +60,32 @@ export const markDeadLetter = (env: WorkerEnv, id: string) =>
  * @param id - Durable delivery row identifier.
  * @param announcementId - Announcement row associated with the delivery.
  * @param claimToken - Token to assign as the lease owner.
+ * @param generation - Queue generation tied to this delivery attempt.
  * @returns `claimed`, `in_flight`, or `complete` according to current state.
  */
 export const claimDelivery = (
   env: WorkerEnv,
   id: string,
   announcementId: string,
-  claimToken: string
+  claimToken: string,
+  generation: string
 ) =>
   Effect.gen(function* claimDeliveryEffect() {
     const claimed = yield* d1(() =>
       env.DB.prepare(
-        "UPDATE deliveries SET claim_token = ?, claim_expires_at = datetime('now', '+2 minutes'), updated_at = CURRENT_TIMESTAMP WHERE id = ? AND announcement_id = ? AND status IN ('pending', 'queued') AND (claim_token IS NULL OR claim_expires_at <= CURRENT_TIMESTAMP) RETURNING id"
+        "UPDATE deliveries SET claim_token = ?, claim_expires_at = datetime('now', '+2 minutes'), updated_at = CURRENT_TIMESTAMP WHERE id = ? AND announcement_id = ? AND generation = ? AND status IN ('pending', 'queued') AND (claim_token IS NULL OR claim_expires_at <= CURRENT_TIMESTAMP) RETURNING id"
       )
-        .bind(claimToken, id, announcementId)
+        .bind(claimToken, id, announcementId, generation)
         .first<ClaimRow>()
     );
-    if (claimed) return "claimed" as const;
+    if (claimed) {
+      return "claimed" as const;
+    }
     const activeClaim = yield* d1(() =>
       env.DB.prepare(
-        "SELECT id FROM deliveries WHERE id = ? AND announcement_id = ? AND status IN ('pending', 'queued') AND claim_token IS NOT NULL AND claim_expires_at > CURRENT_TIMESTAMP"
+        "SELECT id FROM deliveries WHERE id = ? AND announcement_id = ? AND generation = ? AND status IN ('pending', 'queued') AND claim_token IS NOT NULL AND claim_expires_at > CURRENT_TIMESTAMP"
       )
-        .bind(id, announcementId)
+        .bind(id, announcementId, generation)
         .first<ClaimRow>()
     );
     return activeClaim ? ("in_flight" as const) : ("complete" as const);

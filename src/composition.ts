@@ -68,11 +68,18 @@ export const poll = async (
  */
 export const consumeQueue = (batch: MessageBatch<unknown>, env: WorkerEnv) => {
   const operations: QueueOperations = {
-    claimDelivery: (deliveryId, announcementId, claimToken) =>
-      claimDeliveryInD1(env, deliveryId, announcementId, claimToken),
+    claimDelivery: (deliveryId, announcementId, claimToken, generation) =>
+      claimDeliveryInD1(
+        env,
+        deliveryId,
+        announcementId,
+        claimToken,
+        generation
+      ),
     delivery: (claimToken, deliveryId, announcementId) =>
       deliver(env, claimToken, deliveryId, announcementId),
-    failDeadLetter: (deliveryId) => markDeadLetter(env, deliveryId),
+    failDeadLetter: (deliveryId, generation) =>
+      markDeadLetter(env, deliveryId, generation),
     recordFailure: (deliveryId, message, retryable, claimToken) =>
       updateDeliveryFailure(env, deliveryId, message, retryable, claimToken),
     safeError,

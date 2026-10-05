@@ -2,7 +2,7 @@ import { Effect } from "effect";
 
 import type { PollingPorts } from "@/application/polling";
 import { BridgeInfrastructureError } from "@/bridge-infrastructure-error";
-import type { Subscription } from "@/domain";
+import type { Announcement, Subscription } from "@/domain";
 
 /** Reusable subscription fixture for polling use-case tests. */
 export const subscription: Subscription = {
@@ -41,6 +41,7 @@ export interface FakePollingPorts {
   readonly cursor: () => string | undefined;
   readonly sent: () => readonly string[];
   readonly beforeValues: () => readonly string[];
+  readonly discoveries: () => readonly Announcement[];
 }
 
 /**
@@ -58,6 +59,7 @@ export const fakePorts = (
   let cursorValue: string | undefined = initialCursor ?? undefined;
   let initialized = initialCursor !== null;
   const discovered = new Map<string, string>();
+  const storedAnnouncements: Announcement[] = [];
   const queued: string[] = [];
   const marked = new Set<string>();
   const beforeValues: string[] = [];
@@ -96,12 +98,14 @@ export const fakePorts = (
             .map((id) => ({
               announcementId: `announcement-${id}`,
               deliveryId: `delivery-${id}`,
+              generation: "initial",
             }))
         ),
-      persistDiscoveryBatch: (_subscription, announcements, cursor) =>
+      persistDiscoveryBatch: (_subscription, discoveredBatch, cursor) =>
         Effect.sync(() => {
-          for (const item of announcements) {
+          for (const item of discoveredBatch) {
             discovered.set(item.message.id, item.message.id);
+            storedAnnouncements.push(item);
           }
           cursorValue = cursor;
         }),
@@ -117,6 +121,11 @@ export const fakePorts = (
         );
       },
       fetchLatest: () => Effect.succeed([]),
+      getSourceMetadata: () =>
+        Effect.succeed({
+          channelName: "announcements",
+          guildName: "News server",
+        }),
       getWebhook: (id) =>
         Effect.succeed({
           id,
@@ -124,16 +133,12 @@ export const fakePorts = (
           source_guild: { id: "source-guild" },
           type: 2,
         }),
-      getSourceMetadata: () =>
-        Effect.succeed({
-          channelName: "announcements",
-          guildName: "News server",
-        }),
     },
   };
   return {
     beforeValues: () => beforeValues,
     cursor: () => (initialized ? (cursorValue ?? "0") : undefined),
+    discoveries: () => storedAnnouncements,
     ports,
     sent: () => queued,
   };

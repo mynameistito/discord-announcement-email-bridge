@@ -1,22 +1,22 @@
-import type { WorkerEnv } from "@/alchemy.run";
-
 import {
   activeClaimSql,
   claimSql,
   d1Result,
+  deadLetterSql,
   hasActiveClaim,
   isClaimable,
   pendingDeliveriesSql,
   pendingRows,
   projectRow,
   recoverExpiredSql,
-} from "./d1-test-support";
+} from "@/__tests__/d1-test-support";
 import type {
   D1Fixture,
   FakeAnnouncement,
   FakeDelivery,
   FakeSubscription,
-} from "./d1-test-support";
+} from "@/__tests__/d1-test-support";
+import type { WorkerEnv } from "@/alchemy.run";
 
 /**
  * Create seeded delivery state and D1 bindings that recognize production SQL.
@@ -37,6 +37,7 @@ export const makeD1Fixture = (): D1Fixture => {
       claimToken: "expired-token",
       createdAt: 1,
       expired: true,
+      generation: "initial",
       id: "old-delivery",
       status: "queued",
     },
@@ -45,6 +46,7 @@ export const makeD1Fixture = (): D1Fixture => {
       claimToken: null,
       createdAt: 2,
       expired: false,
+      generation: "initial",
       id: "claim-delivery",
       status: "queued",
     },
@@ -67,16 +69,17 @@ export const makeD1Fixture = (): D1Fixture => {
         },
         first<T>(): Promise<T | null> {
           if (query === claimSql) {
-            const [token, id, announcementId] = values;
+            const [token, id, announcementId, generation] = values;
             if (
               token === undefined ||
               id === undefined ||
-              announcementId === undefined
+              announcementId === undefined ||
+              generation === undefined
             ) {
               throw new Error("Missing expected delivery claim bindings");
             }
             const delivery = deliveries.find((row) =>
-              isClaimable(row, id, announcementId)
+              isClaimable(row, id, announcementId, generation)
             );
             if (!delivery) {
               return Promise.resolve(null);
@@ -86,9 +89,9 @@ export const makeD1Fixture = (): D1Fixture => {
             return Promise.resolve(projectRow<T>({ id: delivery.id }));
           }
           if (query === activeClaimSql) {
-            const [id, announcementId] = values;
+            const [id, announcementId, generation] = values;
             const delivery = deliveries.find((row) =>
-              hasActiveClaim(row, id, announcementId)
+              hasActiveClaim(row, id, announcementId, generation)
             );
             return Promise.resolve(
               delivery ? projectRow<T>({ id: delivery.id }) : null
@@ -97,6 +100,22 @@ export const makeD1Fixture = (): D1Fixture => {
           throw new Error(`Unexpected D1 query: ${query}`);
         },
         run(): Promise<D1Result> {
+          if (query === deadLetterSql) {
+            const [id, generation] = values;
+            const delivery = deliveries.find(
+              (row) =>
+                row.id === id &&
+                row.generation === generation &&
+                row.status === "queued" &&
+                row.expired
+            );
+            if (!delivery) {
+              return Promise.resolve(d1Result([], 0));
+            }
+            delivery.status = "failed";
+            delivery.claimToken = null;
+            return Promise.resolve(d1Result([], 1));
+          }
           if (query !== recoverExpiredSql) {
             throw new Error(`Unexpected D1 query: ${query}`);
           }

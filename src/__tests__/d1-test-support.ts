@@ -3,20 +3,23 @@ import type { WorkerEnv } from "@/alchemy.run";
 export const recoverExpiredSql =
   "UPDATE deliveries SET status = 'pending', claim_token = NULL, claim_expires_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE status = 'queued' AND claim_token IS NOT NULL AND claim_expires_at <= CURRENT_TIMESTAMP";
 export const pendingDeliveriesSql =
-  "SELECT d.id AS delivery_id, d.announcement_id FROM deliveries d JOIN announcements a ON a.id = d.announcement_id WHERE d.status = 'pending' ORDER BY d.created_at LIMIT 500";
+  "SELECT d.id AS delivery_id, d.announcement_id, d.generation FROM deliveries d JOIN announcements a ON a.id = d.announcement_id WHERE d.status = 'pending' ORDER BY d.created_at LIMIT 500";
 export const claimSql =
-  "UPDATE deliveries SET claim_token = ?, claim_expires_at = datetime('now', '+2 minutes'), updated_at = CURRENT_TIMESTAMP WHERE id = ? AND announcement_id = ? AND status IN ('pending', 'queued') AND (claim_token IS NULL OR claim_expires_at <= CURRENT_TIMESTAMP) RETURNING id";
+  "UPDATE deliveries SET claim_token = ?, claim_expires_at = datetime('now', '+2 minutes'), updated_at = CURRENT_TIMESTAMP WHERE id = ? AND announcement_id = ? AND generation = ? AND status IN ('pending', 'queued') AND (claim_token IS NULL OR claim_expires_at <= CURRENT_TIMESTAMP) RETURNING id";
 export const activeClaimSql =
-  "SELECT id FROM deliveries WHERE id = ? AND announcement_id = ? AND status IN ('pending', 'queued') AND claim_token IS NOT NULL AND claim_expires_at > CURRENT_TIMESTAMP";
+  "SELECT id FROM deliveries WHERE id = ? AND announcement_id = ? AND generation = ? AND status IN ('pending', 'queued') AND claim_token IS NOT NULL AND claim_expires_at > CURRENT_TIMESTAMP";
+export const deadLetterSql =
+  "UPDATE deliveries SET status = 'failed', last_error = 'queue_retry_exhausted', claim_token = NULL, claim_expires_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND generation = ? AND status = 'queued' AND (claim_token IS NULL OR claim_expires_at <= CURRENT_TIMESTAMP)";
 
 /** Mutable delivery row state for the focused D1 SQL test double. */
 export interface FakeDelivery {
   readonly id: string;
   readonly announcementId: string;
+  generation: string;
   readonly createdAt: number;
   claimToken: string | null;
   expired: boolean;
-  status: "pending" | "queued";
+  status: "pending" | "queued" | "failed";
 }
 
 /** Subscription state used to verify recovery is not restricted to enabled rows. */
@@ -65,10 +68,12 @@ const hasNoLiveLease = (row: FakeDelivery): boolean =>
 export const isClaimable = (
   row: FakeDelivery,
   id: string | undefined,
-  announcementId: string | undefined
+  announcementId: string | undefined,
+  generation: string | undefined
 ): boolean =>
   row.id === id &&
   row.announcementId === announcementId &&
+  row.generation === generation &&
   hasClaimableStatus(row) &&
   hasNoLiveLease(row);
 
@@ -82,10 +87,12 @@ export const isClaimable = (
 export const hasActiveClaim = (
   row: FakeDelivery,
   id: string | undefined,
-  announcementId: string | undefined
+  announcementId: string | undefined,
+  generation: string | undefined
 ): boolean =>
   row.id === id &&
   row.announcementId === announcementId &&
+  row.generation === generation &&
   row.claimToken !== null &&
   !row.expired;
 
@@ -135,9 +142,10 @@ export const pendingRows = <T>(
     )
     .toSorted((left, right) => left.createdAt - right.createdAt)
     .slice(0, 500)
-    .map(({ announcementId, id }) =>
+    .map(({ announcementId, generation, id }) =>
       projectRow<T>({
         announcement_id: announcementId,
         delivery_id: id,
+        generation,
       })
     );

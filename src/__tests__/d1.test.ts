@@ -1,11 +1,10 @@
 import { Effect } from "effect";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { makeD1Fixture } from "@/__tests__/d1-fixture";
+import type { D1Fixture } from "@/__tests__/d1-test-support";
 import { makeRepository } from "@/adapters/d1";
-import { claimDelivery } from "@/adapters/d1-deliveries";
-
-import { makeD1Fixture } from "./d1-fixture";
-import type { D1Fixture } from "./d1-test-support";
+import { claimDelivery, markDeadLetter } from "@/adapters/d1-deliveries";
 
 describe("D1 delivery repository", () => {
   let fixture: D1Fixture;
@@ -37,6 +36,7 @@ describe("D1 delivery repository", () => {
       {
         announcementId: "old-announcement",
         deliveryId: "old-delivery",
+        generation: "initial",
       },
     ]);
     expect(fixture.deliveries[0]).toMatchObject({
@@ -56,6 +56,7 @@ describe("D1 delivery repository", () => {
         claimToken: null,
         createdAt: index,
         expired: false,
+        generation: "initial",
         id: `delivery-${String(index).padStart(3, "0")}`,
         status: "pending",
       });
@@ -65,6 +66,7 @@ describe("D1 delivery repository", () => {
       claimToken: null,
       createdAt: -1,
       expired: false,
+      generation: "initial",
       id: "orphaned-delivery",
       status: "pending",
     });
@@ -77,10 +79,12 @@ describe("D1 delivery repository", () => {
     expect(pending[0]).toStrictEqual({
       announcementId: "announcement-000",
       deliveryId: "delivery-000",
+      generation: "initial",
     });
     expect(pending.at(-1)).toStrictEqual({
       announcementId: "announcement-499",
       deliveryId: "delivery-499",
+      generation: "initial",
     });
   });
 
@@ -90,7 +94,8 @@ describe("D1 delivery repository", () => {
         fixture.env,
         "claim-delivery",
         "claim-announcement",
-        "first-token"
+        "first-token",
+        "initial"
       )
     );
     const competingClaim = await Effect.runPromise(
@@ -98,7 +103,8 @@ describe("D1 delivery repository", () => {
         fixture.env,
         "claim-delivery",
         "claim-announcement",
-        "competing-token"
+        "competing-token",
+        "initial"
       )
     );
     const [, claimedDelivery] = fixture.deliveries;
@@ -111,7 +117,8 @@ describe("D1 delivery repository", () => {
         fixture.env,
         "claim-delivery",
         "claim-announcement",
-        "recovery-token"
+        "recovery-token",
+        "initial"
       )
     );
 
@@ -120,5 +127,45 @@ describe("D1 delivery repository", () => {
       "in_flight",
       "claimed",
     ]);
+  });
+
+  it("does not let a stale dead-letter message fail a replayed delivery", async () => {
+    const marked = await Effect.runPromise(
+      markDeadLetter(fixture.env, "old-delivery", "initial")
+    );
+    const [delivery] = fixture.deliveries;
+    if (!delivery) {
+      throw new Error("Expected seeded dead-letter delivery");
+    }
+    delivery.status = "pending";
+    delivery.generation = "replay-generation";
+    const staleClaim = await Effect.runPromise(
+      claimDelivery(
+        fixture.env,
+        "old-delivery",
+        "old-announcement",
+        "old-queue-token",
+        "initial"
+      )
+    );
+    const staleMark = await Effect.runPromise(
+      markDeadLetter(fixture.env, "old-delivery", "initial")
+    );
+    delivery.status = "queued";
+    const staleRetry = await Effect.runPromise(
+      markDeadLetter(fixture.env, "old-delivery", "initial")
+    );
+    const currentMark = await Effect.runPromise(
+      markDeadLetter(fixture.env, "old-delivery", "replay-generation")
+    );
+
+    expect([
+      marked,
+      staleClaim,
+      staleMark,
+      staleRetry,
+      currentMark,
+      delivery.status,
+    ]).toStrictEqual([true, "complete", false, false, true, "failed"]);
   });
 });

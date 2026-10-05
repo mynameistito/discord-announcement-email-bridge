@@ -6,7 +6,7 @@ import { processQueue } from "@/adapters/queue";
 
 const deliveryId = "delivery-123";
 const announcementId = "announcement-123";
-const payload = { announcementId, deliveryId };
+const payload = { announcementId, deliveryId, generation: "initial" };
 
 /** Mutable observations collected by the queue-level delivery test. */
 interface DeliveryCounters {

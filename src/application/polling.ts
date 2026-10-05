@@ -19,6 +19,7 @@ export interface UnparsedDiscordMessage {
 interface DeliveryRef {
   readonly deliveryId: string;
   readonly announcementId: string;
+  readonly generation: string;
 }
 
 /**

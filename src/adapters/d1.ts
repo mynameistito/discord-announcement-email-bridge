@@ -149,12 +149,13 @@ export const makeRepository = (env: WorkerEnv): PollingPorts["repository"] => ({
       );
       const result = yield* d1(() =>
         env.DB.prepare(
-          "SELECT d.id AS delivery_id, d.announcement_id FROM deliveries d JOIN announcements a ON a.id = d.announcement_id WHERE d.status = 'pending' ORDER BY d.created_at LIMIT 500"
+          "SELECT d.id AS delivery_id, d.announcement_id, d.generation FROM deliveries d JOIN announcements a ON a.id = d.announcement_id WHERE d.status = 'pending' ORDER BY d.created_at LIMIT 500"
         ).all<DeliveryRow>()
       );
       return result.results.map((row) => ({
         announcementId: row.announcement_id,
         deliveryId: row.delivery_id,
+        generation: row.generation,
       }));
     }),
   persistDiscoveryBatch: (subscription, announcements, cursor) =>
@@ -206,4 +207,5 @@ interface CursorRow {
 interface DeliveryRow {
   readonly delivery_id: string;
   readonly announcement_id: string;
+  readonly generation: string;
 }

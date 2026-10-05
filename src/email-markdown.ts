@@ -159,11 +159,17 @@ const renderBlock = (
 ): RenderedBlock => {
   const line = lines[index] ?? "";
   const code = renderCodeBlock(lines, index);
-  if (code) return code;
+  if (code) {
+    return code;
+  }
   const heading = renderHeading(line, index);
-  if (heading) return heading;
+  if (heading) {
+    return heading;
+  }
   const quote = renderQuote(lines, index);
-  if (quote) return quote;
+  if (quote) {
+    return quote;
+  }
   const list = renderList(lines, index);
   return list ?? renderParagraph(lines, index);
 };

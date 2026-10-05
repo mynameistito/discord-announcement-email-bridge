@@ -13,7 +13,10 @@ import { photoAttachment } from "@/__tests__/e2e/photo-fixture.ts";
 import { announcementContent } from "@/__tests__/e2e/types.ts";
 import { normalizedWorkerUrl } from "@/__tests__/e2e/worker.ts";
 
-const delayedProbe = (delay: number) => () => pause(delay).then(() => true);
+const delayedProbe = (delay: number) => async () => {
+  await pause(delay);
+  return true;
+};
 
 describe("E2E helpers", () => {
   it("parses profile flags in both supported forms", () => {

@@ -68,7 +68,7 @@ This starts `alchemy dev` in the `e2e-local` stage, runs against the local Worke
 bun --env-file=.env.e2e run e2e --profile preview
 ```
 
-The local run does not deploy or destroy a remote stage. The E2E configuration needs a preview bot token, guild and channel IDs, preview Resend key, admin token, email sender and recipient, and Cloudflare Access credentials. The field names are defined in the workflow and template; keep their values in 1Password.
+The local run does not deploy or destroy a remote stage. It needs a preview bot token, guild and channel IDs, preview Resend key, admin token, email sender, and recipient. Cloudflare Access credentials are optional locally; when provided, the runner sends them to protected Worker endpoints. The field names are defined in the workflow and template; keep their values in 1Password.
 
 ### GitHub Actions run
 

@@ -16,9 +16,15 @@
     "allowImportingTsExtensions": true,
     "paths": {
       "@/alchemy.run": ["./alchemy.run.ts"],
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@tests/*": ["./__tests__/*"]
     },
     "noEmit": true
   },
-  "include": ["src/**/*.ts", "scripts/**/*.ts", "alchemy.run.ts"]
+  "include": [
+    "src/**/*.ts",
+    "scripts/**/*.ts",
+    "__tests__/**/*.ts",
+    "alchemy.run.ts"
+  ]
 }

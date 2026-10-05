@@ -4,12 +4,8 @@ import {
   jsonRequest,
   request,
   waitUntil,
-} from "@/__tests__/e2e/http.ts";
-import type {
-  E2EConfig,
-  LogTone,
-  WorkerStatus,
-} from "@/__tests__/e2e/types.ts";
+} from "@tests/e2e/http.ts";
+import type { E2EConfig, LogTone, WorkerStatus } from "@tests/e2e/types.ts";
 
 type Log = (message: string, tone?: LogTone) => void;
 

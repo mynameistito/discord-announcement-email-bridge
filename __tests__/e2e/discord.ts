@@ -1,11 +1,11 @@
 import { readFile } from "node:fs/promises";
 
-import { discordApi, jsonRequest, waitUntil } from "@/__tests__/e2e/http.ts";
+import { discordApi, jsonRequest, waitUntil } from "@tests/e2e/http.ts";
 import type {
   AnnouncementAttachment,
   E2EConfig,
   LogTone,
-} from "@/__tests__/e2e/types.ts";
+} from "@tests/e2e/types.ts";
 
 type Log = (message: string, tone?: LogTone) => void;
 interface DiscordChannel {

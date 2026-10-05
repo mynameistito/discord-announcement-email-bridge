@@ -2,8 +2,8 @@ import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
 import { once } from "node:events";
 
-import { request, waitUntil } from "@/__tests__/e2e/http.ts";
-import type { E2EConfig, LogTone } from "@/__tests__/e2e/types.ts";
+import { request, waitUntil } from "@tests/e2e/http.ts";
+import type { E2EConfig, LogTone } from "@tests/e2e/types.ts";
 
 type Log = (message: string, tone?: LogTone) => void;
 

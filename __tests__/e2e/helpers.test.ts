@@ -1,17 +1,16 @@
 import { setTimeout as pause } from "node:timers/promises";
 
-import { Effect } from "effect";
-import { describe, expect, it } from "vitest";
-
 import {
   configFromEnvironment,
   parseProfile,
   validateMode,
-} from "@/__tests__/e2e/config.ts";
-import { waitUntil } from "@/__tests__/e2e/http.ts";
-import { photoAttachment } from "@/__tests__/e2e/photo-fixture.ts";
-import { announcementContent } from "@/__tests__/e2e/types.ts";
-import { normalizedWorkerUrl } from "@/__tests__/e2e/worker.ts";
+} from "@tests/e2e/config.ts";
+import { waitUntil } from "@tests/e2e/http.ts";
+import { photoAttachment } from "@tests/e2e/photo-fixture.ts";
+import { announcementContent } from "@tests/e2e/types.ts";
+import { normalizedWorkerUrl } from "@tests/e2e/worker.ts";
+import { Effect } from "effect";
+import { describe, expect, it } from "vitest";
 
 const delayedProbe = (delay: number) => async () => {
   await pause(delay);

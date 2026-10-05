@@ -9,13 +9,14 @@ import {
   pendingRows,
   projectRow,
   recoverExpiredSql,
-} from "@/__tests__/d1-test-support";
+} from "@tests/d1-test-support";
 import type {
   D1Fixture,
   FakeAnnouncement,
   FakeDelivery,
   FakeSubscription,
-} from "@/__tests__/d1-test-support";
+} from "@tests/d1-test-support";
+
 import type { WorkerEnv } from "@/alchemy.run";
 
 /**

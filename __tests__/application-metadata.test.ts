@@ -1,7 +1,7 @@
+import { crosspost, fakePorts } from "@tests/application-fixtures";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { crosspost, fakePorts } from "@/__tests__/application-fixtures";
 import { pollAll, pollingServiceLayer } from "@/application/polling";
 import type { PollingPorts } from "@/application/polling";
 import { DiscordApiError } from "@/discord-api-error";

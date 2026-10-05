@@ -1,20 +1,19 @@
-import { Effect, Exit } from "effect";
-
 import {
   crosspostAnnouncement,
   createAnnouncement,
   verifyDiscord,
-} from "@/__tests__/e2e/discord.ts";
-import { startLocalDev, stopLocalDev } from "@/__tests__/e2e/local-worker.ts";
-import { photoAttachment } from "@/__tests__/e2e/photo-fixture.ts";
-import { announcementContent } from "@/__tests__/e2e/types.ts";
-import type { E2EOptions, LogTone } from "@/__tests__/e2e/types.ts";
+} from "@tests/e2e/discord.ts";
+import { startLocalDev, stopLocalDev } from "@tests/e2e/local-worker.ts";
+import { photoAttachment } from "@tests/e2e/photo-fixture.ts";
+import { announcementContent } from "@tests/e2e/types.ts";
+import type { E2EOptions, LogTone } from "@tests/e2e/types.ts";
 import {
   pollBridge,
   seedCursor,
   waitForDelivery,
   waitForWorkerReady,
-} from "@/__tests__/e2e/worker.ts";
+} from "@tests/e2e/worker.ts";
+import { Effect, Exit } from "effect";
 
 const defaultLog = (message: string, tone: LogTone = "info"): void => {
   const colors: Record<LogTone, number> = {

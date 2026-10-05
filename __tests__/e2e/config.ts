@@ -1,4 +1,4 @@
-import type { E2EConfig } from "@/__tests__/e2e/types.ts";
+import type { E2EConfig } from "@tests/e2e/types.ts";
 
 type MutableOptionalConfig = {
   -readonly [Key in "accessClientId" | "accessClientSecret"]?: string;

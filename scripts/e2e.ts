@@ -1,12 +1,11 @@
-import { Effect } from "effect";
-
 import {
   configFromEnvironment,
   parseProfile,
   validateMode,
-} from "../src/__tests__/e2e/config.ts";
-import type { E2EOptions, LogTone } from "../src/__tests__/e2e/types.ts";
-import { runE2E } from "../src/__tests__/e2e/workflow.ts";
+} from "@tests/e2e/config.ts";
+import type { E2EOptions, LogTone } from "@tests/e2e/types.ts";
+import { runE2E } from "@tests/e2e/workflow.ts";
+import { Effect } from "effect";
 
 type MutableE2EOptions = {
   -readonly [Key in keyof E2EOptions]: E2EOptions[Key];

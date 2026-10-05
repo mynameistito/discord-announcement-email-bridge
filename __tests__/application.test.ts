@@ -1,11 +1,11 @@
-import { Effect } from "effect";
-import { describe, expect, it, vi } from "vitest";
-
 import {
   crosspost,
   fakePorts,
   subscription,
-} from "@/__tests__/application-fixtures";
+} from "@tests/application-fixtures";
+import { Effect } from "effect";
+import { describe, expect, it, vi } from "vitest";
+
 import { pollAll, pollingServiceLayer } from "@/application/polling";
 import type { PollingPorts } from "@/application/polling";
 import { DiscordApiError } from "@/discord-api-error";

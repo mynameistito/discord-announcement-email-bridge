@@ -1,8 +1,8 @@
+import { makeD1Fixture } from "@tests/d1-fixture";
+import type { D1Fixture } from "@tests/d1-test-support";
 import { Effect } from "effect";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { makeD1Fixture } from "@/__tests__/d1-fixture";
-import type { D1Fixture } from "@/__tests__/d1-test-support";
 import { makeRepository } from "@/adapters/d1";
 import { claimDelivery, markDeadLetter } from "@/adapters/d1-deliveries";
 

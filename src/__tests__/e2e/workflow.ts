@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Exit } from "effect";
 
 import {
   crosspostAnnouncement,
@@ -45,6 +45,25 @@ const stopLocalDevEffect = (
     Effect.tap(() =>
       Effect.sync(() => log("Stopped local Alchemy dev.", "success"))
     )
+  );
+
+const releaseLocalDev = <A, E>(
+  local: Awaited<ReturnType<typeof startLocalDev>>,
+  exit: Exit.Exit<A, E>,
+  log: (message: string, tone?: LogTone) => void
+): Effect.Effect<void, Error> =>
+  stopLocalDevEffect(local, log).pipe(
+    Effect.catch((cleanupError) => {
+      if (!Exit.isFailure(exit)) {
+        return Effect.fail(cleanupError);
+      }
+      return Effect.sync(() =>
+        log(
+          `Local Alchemy cleanup failed after the workflow failed: ${cleanupError.message}`,
+          "warning"
+        )
+      );
+    })
   );
 
 const runAnnouncement = (
@@ -115,6 +134,6 @@ export const runE2E = (options: E2EOptions): Effect.Effect<void, Error> =>
     return yield* Effect.acquireUseRelease(
       attempt(() => startLocalDev(config, options.profile, signal, log)),
       (local) => runAnnouncement(options, attachment, log, local.url),
-      (local) => stopLocalDevEffect(local, log)
+      (local, exit) => releaseLocalDev(local, exit, log)
     );
   });

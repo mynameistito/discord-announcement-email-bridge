@@ -28,30 +28,41 @@ const statusMark = (outcome: string): string => {
   }
 };
 
+const summaryHeading = (
+  input: E2ESummaryInput
+): readonly [title: string, description: string] => {
+  if (input.e2eOutcome === "success") {
+    if (input.jobStatus === "success") {
+      return [
+        "## ✅ Discord E2E passed",
+        "The complete Discord → Worker → Resend flow completed successfully.",
+      ];
+    }
+    return [
+      "## ✅ Discord E2E passed",
+      "The Discord → Worker → Resend flow passed, but another lifecycle step failed.",
+    ];
+  }
+
+  if (input.e2eOutcome === "failure") {
+    return [
+      "## ❌ Discord E2E failed",
+      "Review the failed lifecycle step and its detailed log output.",
+    ];
+  }
+
+  return [
+    "## ⚠️ Discord E2E did not complete",
+    "Review the lifecycle outcomes and detailed log output.",
+  ];
+};
+
 /** Render the GitHub Actions summary for the isolated Discord E2E lifecycle. */
 export const renderE2ESummary = (input: E2ESummaryInput): string => {
-  const heading =
-    input.e2eOutcome === "success"
-      ? [
-          "## ✅ Discord E2E passed",
-          input.jobStatus === "success"
-            ? "The complete Discord → Worker → Resend flow completed successfully."
-            : "The Discord → Worker → Resend flow passed, but another lifecycle step failed.",
-        ]
-      : input.e2eOutcome === "failure"
-        ? [
-            "## ❌ Discord E2E failed",
-            "Review the failed lifecycle step and its detailed log output.",
-          ]
-        : [
-            "## ⚠️ Discord E2E did not complete",
-            "Review the lifecycle outcomes and detailed log output.",
-          ];
-
   const lines = [
     "",
     "",
-    ...heading,
+    ...summaryHeading(input),
     "",
     `**Workflow status:** \`${input.jobStatus}\``,
     "",

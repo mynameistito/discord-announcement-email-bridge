@@ -14,9 +14,9 @@ const requiredEnvironment = (name: string): string => {
   return value;
 };
 
-const readE2ELog = async (path: string): Promise<string> => {
+const readE2ELog = async (filePath: string): Promise<string> => {
   try {
-    return await readFile(path, "utf-8");
+    return await readFile(filePath, "utf-8");
   } catch {
     return "";
   }

@@ -51,8 +51,8 @@ const releaseLocalDev = <A, E>(
   exit: Exit.Exit<A, E>,
   log: (message: string, tone?: LogTone) => void
 ): Effect.Effect<void, Error> =>
-  stopLocalDevEffect(local, log).pipe(
-    Effect.catch((cleanupError) => {
+  Effect.matchEffect(stopLocalDevEffect(local, log), {
+    onFailure: (cleanupError) => {
       if (!Exit.isFailure(exit)) {
         return Effect.fail(cleanupError);
       }
@@ -62,8 +62,9 @@ const releaseLocalDev = <A, E>(
           "warning"
         )
       );
-    })
-  );
+    },
+    onSuccess: () => Effect.void,
+  });
 
 const runAnnouncement = (
   options: E2EOptions,

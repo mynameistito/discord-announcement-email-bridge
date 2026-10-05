@@ -17,7 +17,8 @@
     "paths": {
       "@/alchemy.run": ["./alchemy.run.ts"],
       "@/*": ["./src/*"],
-      "@tests/*": ["./__tests__/*"]
+      "@tests/*": ["./__tests__/*"],
+      "@scripts/*": ["./scripts/*"]
     },
     "noEmit": true
   },

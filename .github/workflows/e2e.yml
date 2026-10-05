@@ -79,9 +79,7 @@ jobs:
           ADMIN_PREVIEW_TOKEN: ${{ steps.op_e2e.outputs.ADMIN_PREVIEW_TOKEN }}
           CF_ACCESS_CLIENT_ID: ${{ steps.op_e2e.outputs.CF_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ steps.op_e2e.outputs.CF_ACCESS_CLIENT_SECRET }}
-        run: |
-          set -o pipefail
-          bun run e2e 2>&1 | tee "$RUNNER_TEMP/e2e.log"
+        run: bun run e2e
 
       - name: Destroy isolated E2E Worker
         id: destroy
@@ -105,56 +103,4 @@ jobs:
           ALCHEMY_STAGE: e2e-${{ github.run_id }}-${{ github.run_attempt }}
           E2E_WORKER_URL: https://discord-announcement-email-bridge-e2e-${{ github.run_id }}-${{ github.run_attempt }}.mynameistito.workers.dev
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        shell: bash
-        run: |
-          status_mark() {
-            case "$1" in
-              success) printf '✅' ;;
-              skipped) printf '⏭️' ;;
-              cancelled) printf '⏹️' ;;
-              *) printf '❌' ;;
-            esac
-          }
-
-          if [ "$E2E_OUTCOME" = "success" ]; then
-            echo "## ✅ Discord E2E passed" >> "$GITHUB_STEP_SUMMARY"
-            if [ "$JOB_STATUS" = "success" ]; then
-              echo "The complete Discord → Worker → Resend flow completed successfully." >> "$GITHUB_STEP_SUMMARY"
-            else
-              echo "The Discord → Worker → Resend flow passed, but another lifecycle step failed." >> "$GITHUB_STEP_SUMMARY"
-            fi
-          elif [ "$E2E_OUTCOME" = "failure" ]; then
-            echo "## ❌ Discord E2E failed" >> "$GITHUB_STEP_SUMMARY"
-            echo "Review the failed lifecycle step and its detailed log output." >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "## ⚠️ Discord E2E did not complete" >> "$GITHUB_STEP_SUMMARY"
-            echo "Review the lifecycle outcomes and detailed log output." >> "$GITHUB_STEP_SUMMARY"
-          fi
-          printf '\n**Workflow status:** `%s`\n' "$JOB_STATUS" >> "$GITHUB_STEP_SUMMARY"
-
-          {
-            echo
-            echo "| Lifecycle stage | Result |"
-            echo "| --- | --- |"
-            printf '| 1Password secret loading | %s `%s` |\n' "$(status_mark "$OP_OUTCOME")" "$OP_OUTCOME"
-            printf '| Dependency installation | %s `%s` |\n' "$(status_mark "$INSTALL_OUTCOME")" "$INSTALL_OUTCOME"
-            printf '| Isolated Worker deployment | %s `%s` |\n' "$(status_mark "$DEPLOY_OUTCOME")" "$DEPLOY_OUTCOME"
-            printf '| Discord and Resend E2E test | %s `%s` |\n' "$(status_mark "$E2E_OUTCOME")" "$E2E_OUTCOME"
-            printf '| Isolated Worker cleanup | %s `%s` |\n' "$(status_mark "$DESTROY_OUTCOME")" "$DESTROY_OUTCOME"
-            echo
-            echo "### Deployment details"
-            echo
-            printf -- '- **Stage:** `%s`\n' "$ALCHEMY_STAGE"
-            echo "- **Worker:** [$E2E_WORKER_URL]($E2E_WORKER_URL)"
-            echo "- **Run:** [$RUN_URL]($RUN_URL)"
-            echo
-            echo "### E2E checkpoints"
-            echo
-            echo '```text'
-            if [ -s "$RUNNER_TEMP/e2e.log" ]; then
-              cat "$RUNNER_TEMP/e2e.log"
-            else
-              echo "No E2E runner log was produced."
-            fi
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+        run: bun scripts/e2e-summary.ts

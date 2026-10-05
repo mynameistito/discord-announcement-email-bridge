@@ -1,3 +1,6 @@
+import { appendFileSync } from "node:fs";
+import { join } from "node:path";
+
 import {
   configFromEnvironment,
   parseProfile,
@@ -21,11 +24,15 @@ const log = (message: string, tone: LogTone = "info"): void => {
     success: 32,
     warning: 33,
   };
-  console.log(
-    process.env.NO_COLOR
-      ? message
-      : `\u001B[${colors[tone]}m${message}\u001B[0m`
-  );
+  const renderedMessage = process.env.NO_COLOR
+    ? message
+    : `\u001B[${colors[tone]}m${message}\u001B[0m`;
+  console.log(renderedMessage);
+
+  const runnerTemp = process.env.RUNNER_TEMP;
+  if (runnerTemp) {
+    appendFileSync(join(runnerTemp, "e2e.log"), `${message}\n`, "utf8");
+  }
 };
 const requestShutdown = (signal: ShutdownSignal): void => {
   if (controller.signal.aborted) {

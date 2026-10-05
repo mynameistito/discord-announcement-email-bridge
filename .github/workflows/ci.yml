@@ -10,7 +10,22 @@ permissions:
 
 jobs:
   verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Check
+            command: bun run check
+          - name: Knip
+            command: bun run knip
+          - name: Typecheck
+            command: bun run typecheck
+          - name: Test
+            command: bun run test --coverage
+    name: ${{ matrix.name }}
     runs-on: ubuntu-24.04
+    env:
+      CODECOV_TOKEN_AVAILABLE: ${{ secrets.CODECOV_TOKEN != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -19,13 +34,16 @@ jobs:
         with:
           bun-version: 1.4.2
       - run: bun install --frozen-lockfile
-      - run: bun run check
-      - run: bun run knip
-      - run: bun run typecheck
-      - run: bun run test
+      - run: ${{ matrix.command }}
+      - name: Upload coverage to Codecov
+        if: matrix.name == 'Test' && env.CODECOV_TOKEN_AVAILABLE == 'true'
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          disable_search: true
+          files: coverage/lcov.info
+          token: ${{ secrets.CODECOV_TOKEN }}
 
   preview-artifact:
-    needs: verify
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

@@ -5,6 +5,7 @@ import {
   parseProfile,
   validateMode,
 } from "@tests/e2e/config.ts";
+import { isCompleteFollowerCopy } from "@tests/e2e/discord.ts";
 import { waitUntil } from "@tests/e2e/http.ts";
 import { photoAttachment } from "@tests/e2e/photo-fixture.ts";
 import {
@@ -108,6 +109,59 @@ describe("E2E helpers", () => {
     expect(Uint8Array.from(attachment.bytes.subarray(0, 3))).toStrictEqual(
       new Uint8Array([255, 216, 255])
     );
+  });
+
+  it("waits for follower attachment and embed data before accepting the copy", () => {
+    const followerCopy = {
+      id: "follower-message",
+      message_reference: { message_id: "source-message" },
+    };
+    expect(
+      isCompleteFollowerCopy(
+        followerCopy,
+        "source-message",
+        "e2e-photo.jpg",
+        "E2E rich embed"
+      )
+    ).toBeFalsy();
+    expect(
+      isCompleteFollowerCopy(
+        {
+          ...followerCopy,
+          attachments: [{ filename: "e2e-photo.jpg" }],
+        },
+        "source-message",
+        "e2e-photo.jpg",
+        "E2E rich embed"
+      )
+    ).toBeFalsy();
+    expect(
+      isCompleteFollowerCopy(
+        {
+          ...followerCopy,
+          attachments: [{ filename: "e2e-photo.jpg" }],
+          embeds: [
+            {
+              author: {
+                icon_url: "https://example.test/author.png",
+                name: "E2E announcement author",
+              },
+              fields: [{ name: "Status" }],
+              footer: {
+                icon_url: "https://example.test/footer.png",
+                text: "E2E webhook embed",
+              },
+              image: { url: "https://example.test/photo.jpg" },
+              thumbnail: { url: "https://example.test/thumbnail.png" },
+              title: "E2E rich embed",
+            },
+          ],
+        },
+        "source-message",
+        "e2e-photo.jpg",
+        "E2E rich embed"
+      )
+    ).toBeTruthy();
   });
 
   it("does not accept a successful probe that completes after its deadline", async () => {

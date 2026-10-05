@@ -7,7 +7,11 @@ import {
 } from "@tests/e2e/config.ts";
 import { waitUntil } from "@tests/e2e/http.ts";
 import { photoAttachment } from "@tests/e2e/photo-fixture.ts";
-import { announcementContent, simpleWebhookContent } from "@tests/e2e/types.ts";
+import {
+  announcementContent,
+  announcementEmbed,
+  simpleWebhookContent,
+} from "@tests/e2e/types.ts";
 import { normalizedWorkerUrl } from "@tests/e2e/worker.ts";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -65,15 +69,34 @@ describe("E2E helpers", () => {
         "- First Checkpoint Item",
         "- Second Checkpoint Item",
         "Inline Code: `inline code`",
-        "[Hyperlink Text](https://discord.com/developers/docs/intro)",
         '```pwsh\nWrite-Output "E2E PowerShell"\n```',
         '```js\nconsole.log("E2E JavaScript");\n```',
         "Image attachment below.",
+        "The rich embed title links to the Discord API.",
       ].every((example) => content.includes(example))
     ).toBeTruthy();
     expect(simpleWebhookContent("E2E marker")).toBe(
       "Simple E2E webhook message E2E marker"
     );
+    expect(announcementEmbed("2026-10-05T12:00:00.000Z")).toMatchObject({
+      author: {
+        icon_url: expect.stringContaining("discordapp.com"),
+        name: "E2E announcement author",
+      },
+      fields: [
+        { inline: true, name: "Status", value: "All systems ready" },
+        {
+          inline: true,
+          name: "Scenario",
+          value: "Announcement crosspost",
+        },
+      ],
+      footer: { text: "E2E webhook embed" },
+      image: { url: "attachment://e2e-photo.jpg" },
+      thumbnail: { url: expect.stringContaining("discordapp.com") },
+      timestamp: "2026-10-05T12:00:00.000Z",
+      title: "E2E rich embed",
+    });
   });
 
   it("loads the committed JPEG used by the live Discord upload", async () => {

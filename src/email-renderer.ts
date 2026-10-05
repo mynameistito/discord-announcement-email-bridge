@@ -115,6 +115,55 @@ const isImageAttachment = (attachment: DiscordMessage["attachments"][number]) =>
 const discordMessageUrl = (announcement: Announcement): string =>
   `https://discord.com/channels/${encodeURIComponent(announcement.sourceGuildId)}/${encodeURIComponent(announcement.sourceChannelId)}/${encodeURIComponent(announcement.sourceMessageId)}`;
 
+const renderEmbedAuthor = (embed: DiscordMessage["embeds"][number]): string => {
+  const { author } = embed;
+  if (!author?.name) {
+    return "";
+  }
+  const name = renderInline(author.name);
+  const linkedName = author.url
+    ? `<a href="${escapeAttribute(author.url)}">${name}</a>`
+    : name;
+  const icon = author.icon_url
+    ? linkedImage(
+        author.icon_url,
+        author.name,
+        "width:20px;height:20px;border-radius:50%;vertical-align:middle;margin-right:6px"
+      )
+    : "";
+  return `<p>${icon}${linkedName}</p>`;
+};
+
+const renderEmbedFooter = (embed: DiscordMessage["embeds"][number]): string => {
+  const icon = embed.footer?.icon_url
+    ? linkedImage(
+        embed.footer.icon_url,
+        "",
+        "width:16px;height:16px;vertical-align:middle;margin-right:6px"
+      )
+    : "";
+  const text = embed.footer ? renderInline(embed.footer.text) : "";
+  const timestamp = embed.timestamp
+    ? ` · ${escapeHtml(formatTimestamp(embed.timestamp))} UTC`
+    : "";
+  if (!text && !timestamp) {
+    return "";
+  }
+  return `<p>${icon}${text}${timestamp}</p>`;
+};
+
+const embedBorderColor = (color: number | undefined): string => {
+  if (
+    color === undefined ||
+    !Number.isSafeInteger(color) ||
+    color < 0 ||
+    color > 0xff_ff_ff
+  ) {
+    return "";
+  }
+  return ` style="border-left:4px solid #${color.toString(16).padStart(6, "0")};padding-left:12px"`;
+};
+
 /**
  * Render one Discord embed with formatted text and linked images.
  * @param embed - Discord embed data.
@@ -122,6 +171,10 @@ const discordMessageUrl = (announcement: Announcement): string =>
  */
 const renderEmbed = (embed: DiscordMessage["embeds"][number]): string => {
   const title = renderInline(embed.title ?? "");
+  const linkedTitle = embed.url
+    ? `<a href="${escapeAttribute(embed.url)}">${title}</a>`
+    : title;
+  const author = renderEmbedAuthor(embed);
   const description = renderEmailMarkdown(embed.description ?? "");
   const fields = (embed.fields ?? [])
     .map(
@@ -143,10 +196,8 @@ const renderEmbed = (embed: DiscordMessage["embeds"][number]): string => {
       );
     })
     .join("");
-  const link = embed.url
-    ? `<p><a href="${escapeAttribute(embed.url)}">${escapeHtml(embed.url)}</a></p>`
-    : "";
-  return `<section><h2>${title}</h2><div>${description}</div>${fields}${images}${link}</section>`;
+  const footer = renderEmbedFooter(embed);
+  return `<section${embedBorderColor(embed.color)}>${author}<h2>${linkedTitle}</h2><div>${description}</div>${fields}${images}${footer}</section>`;
 };
 
 /**
@@ -188,7 +239,17 @@ export const renderHtml = (announcement: Announcement): string => {
   const header = `<table role="presentation" cellpadding="0" cellspacing="0" style="margin-bottom:24px"><tr>${iconCell}<td><strong>${escapeHtml(server)}</strong><br /><a href="${messageUrl}" style="color:#5865f2;text-decoration:none">#${escapeHtml(channel)}</a> <span style="color:#747f8d">· ${escapeHtml(formatTimestamp(message.timestamp))} UTC</span><br /><span style="color:#747f8d">${escapeHtml(message.author.username)}</span></td></tr></table>`;
   const content = renderEmailMarkdown(message.content);
   const embeds = message.embeds.map(renderEmbed).join("");
-  const attachments = message.attachments.map(renderAttachment).join("");
+  const embedImages = new Set(
+    message.embeds.flatMap((embed) =>
+      [embed.image?.url, embed.thumbnail?.url].filter(
+        (url): url is string => url !== undefined
+      )
+    )
+  );
+  const attachments = message.attachments
+    .filter((attachment) => !embedImages.has(attachment.url))
+    .map(renderAttachment)
+    .join("");
   return `<main>${header}<div>${content}</div>${embeds}${attachments}</main>`;
 };
 
@@ -204,11 +265,14 @@ export const renderText = (announcement: Announcement): string => {
     .map((embed) =>
       [
         embed.title,
+        embed.author?.name,
         embed.description,
         ...(embed.fields ?? []).flatMap((field) => [field.name, field.value]),
         embed.url,
         embed.image?.url,
         embed.thumbnail?.url,
+        embed.footer?.text,
+        embed.timestamp,
       ]
         .filter(Boolean)
         .join("\n")

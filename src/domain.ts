@@ -19,16 +19,34 @@ const AttachmentSchema = Schema.Struct({
 
 /** Runtime contract for the optional name and value of a Discord embed field. */
 const EmbedFieldSchema = Schema.Struct({
+  inline: Schema.optionalKey(Schema.Boolean),
   name: Schema.optionalKey(Schema.String),
   value: Schema.optionalKey(Schema.String),
 });
 
+/** Runtime contract for the optional author displayed at the top of an embed. */
+const EmbedAuthorSchema = Schema.Struct({
+  icon_url: Schema.optionalKey(Schema.String),
+  name: Schema.optionalKey(Schema.String),
+  url: Schema.optionalKey(Schema.String),
+});
+
+/** Runtime contract for the optional footer displayed below an embed. */
+const EmbedFooterSchema = Schema.Struct({
+  icon_url: Schema.optionalKey(Schema.String),
+  text: Schema.String,
+});
+
 /** Runtime contract for the subset of embed content rendered by the bridge. */
 const EmbedSchema = Schema.Struct({
+  author: Schema.optionalKey(EmbedAuthorSchema),
+  color: Schema.optionalKey(Schema.Number),
   description: Schema.optionalKey(Schema.String),
   fields: Schema.optionalKey(Schema.Array(EmbedFieldSchema)),
+  footer: Schema.optionalKey(EmbedFooterSchema),
   image: Schema.optionalKey(Schema.Struct({ url: Schema.String })),
   thumbnail: Schema.optionalKey(Schema.Struct({ url: Schema.String })),
+  timestamp: Schema.optionalKey(Schema.String),
   title: Schema.optionalKey(Schema.String),
   url: Schema.optionalKey(Schema.String),
 });

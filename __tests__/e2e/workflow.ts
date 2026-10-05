@@ -7,7 +7,11 @@ import {
 } from "@tests/e2e/discord.ts";
 import { startLocalDev, stopLocalDev } from "@tests/e2e/local-worker.ts";
 import { photoAttachment } from "@tests/e2e/photo-fixture.ts";
-import { announcementContent, simpleWebhookContent } from "@tests/e2e/types.ts";
+import {
+  announcementContent,
+  announcementEmbed,
+  simpleWebhookContent,
+} from "@tests/e2e/types.ts";
 import type { E2EOptions, LogTone } from "@tests/e2e/types.ts";
 import {
   pollBridge,
@@ -88,7 +92,8 @@ const runAnnouncement = (
         marker,
         announcementContent(marker),
         signal,
-        attachment
+        attachment,
+        [announcementEmbed(new Date().toISOString())]
       )
     );
     log(`Created test announcement ${messageId}.`, "success");
@@ -97,7 +102,14 @@ const runAnnouncement = (
         ? attachment.filename
         : (attachment.filename ?? attachment.path.split(/[\\/]/u).at(-1));
     const followerCopyId = yield* attempt(() =>
-      crosspostAnnouncement(config, messageId, signal, log, expectedFilename)
+      crosspostAnnouncement(
+        config,
+        messageId,
+        signal,
+        log,
+        expectedFilename,
+        "E2E rich embed"
+      )
     );
     log("Follower copy appeared in the receiver channel.", "success");
     const simpleMarker = crypto.randomUUID();

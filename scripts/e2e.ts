@@ -154,6 +154,30 @@ const request = (
     signal: init.signal ?? shutdownSignal,
   });
 
+class CloudflareAccessRedirectError extends Error {
+  readonly _tag = "CloudflareAccessRedirectError" as const;
+
+  constructor(label: string) {
+    super(
+      `${label} failed because Cloudflare Access redirected the request to its login page. Verify the service token is valid and allowed by a Service Auth policy.`
+    );
+    this.name = "CloudflareAccessRedirectError";
+  }
+}
+
+const isCloudflareAccessRedirect = (response: Response): boolean => {
+  const location = response.headers.get("location");
+
+  return (
+    response.status >= 300 &&
+    response.status < 400 &&
+    location?.includes("/cdn-cgi/access/login") === true
+  );
+};
+
+const cloudflareAccessError = (label: string): Error =>
+  new CloudflareAccessRedirectError(label);
+
 const waitUntil = <T>(
   operation: (signal: AbortSignal) => Promise<T>,
   isComplete: (value: T) => boolean,
@@ -247,6 +271,10 @@ const jsonRequest = async <T>(
   label: string
 ): Promise<T> => {
   const response = await request(url, init);
+
+  if (isCloudflareAccessRedirect(response)) {
+    throw cloudflareAccessError(label);
+  }
 
   if (!response.ok) {
     const isDiscordRequest = response.url.startsWith(discordApi);
@@ -611,7 +639,7 @@ const deliveryStatus = async (
     statusUrl.searchParams.set("discordMessageId", discordMessageId);
   }
 
-  const statusInit: RequestInit = { headers };
+  const statusInit: RequestInit = { headers, redirect: "manual" };
 
   if (signal) {
     statusInit.signal = signal;
@@ -682,12 +710,20 @@ const waitForWorkerReady = async (workerUrl: string): Promise<void> => {
       try {
         const response = await request(`${base}/healthz`, {
           headers: healthHeaders,
+          redirect: "manual",
           signal,
         });
 
+        if (isCloudflareAccessRedirect(response)) {
+          throw cloudflareAccessError("Worker health check");
+        }
+
         return response.ok;
       } catch (error) {
-        if (shutdownSignal.aborted) {
+        if (
+          shutdownSignal.aborted ||
+          error instanceof CloudflareAccessRedirectError
+        ) {
           throw error;
         }
 
@@ -736,7 +772,12 @@ const run = async (workerUrl: string): Promise<void> => {
   const baseline = await request(`${base}/admin/poll`, {
     headers: adminHeaders,
     method: "POST",
+    redirect: "manual",
   });
+
+  if (isCloudflareAccessRedirect(baseline)) {
+    throw cloudflareAccessError("Baseline Worker poll");
+  }
 
   if (baseline.status !== 202) {
     throw new Error(`Baseline Worker poll failed (HTTP ${baseline.status})`);
@@ -784,7 +825,12 @@ const run = async (workerUrl: string): Promise<void> => {
   const poll = await request(`${base}/admin/poll`, {
     headers: adminHeaders,
     method: "POST",
+    redirect: "manual",
   });
+
+  if (isCloudflareAccessRedirect(poll)) {
+    throw cloudflareAccessError("Worker poll");
+  }
 
   if (poll.status !== 202) {
     throw new Error(`Worker poll failed (HTTP ${poll.status})`);

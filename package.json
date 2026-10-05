@@ -26,6 +26,7 @@
     "knip": "knip",
     "check": "ultracite check",
     "format": "ultracite fix",
+    "fetch-all-addresses": "node scripts/fetch-all-addresses.ts",
     "build": "bun build src/worker.ts --target=browser --outdir=dist",
     "dev": "alchemy dev",
     "deploy": "alchemy deploy",

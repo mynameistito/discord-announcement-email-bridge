@@ -2,8 +2,8 @@ import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
 import { once } from "node:events";
 
-import { request, waitUntil } from "./http.ts";
-import type { E2EConfig, LogTone } from "./types.ts";
+import { request, waitUntil } from "@/__tests__/e2e/http.ts";
+import type { E2EConfig, LogTone } from "@/__tests__/e2e/types.ts";
 
 type Log = (message: string, tone?: LogTone) => void;
 
@@ -11,7 +11,9 @@ const hasExited = (child: ChildProcess): boolean =>
   child.exitCode !== null || child.signalCode !== null;
 
 const hasRunningProcessGroup = (child: ChildProcess): boolean => {
-  if (process.platform === "win32" || !child.pid) return false;
+  if (process.platform === "win32" || !child.pid) {
+    return false;
+  }
   try {
     process.kill(-child.pid, 0);
     return true;
@@ -24,13 +26,16 @@ const waitForExit = async (
   child: ChildProcess,
   timeout: number
 ): Promise<boolean> => {
-  if (hasExited(child)) return true;
+  if (hasExited(child)) {
+    return true;
+  }
   try {
     await once(child, "exit", { signal: AbortSignal.timeout(timeout) });
     return true;
   } catch (error) {
-    if (error instanceof DOMException && error.name === "TimeoutError")
+    if (error instanceof DOMException && error.name === "TimeoutError") {
       return false;
+    }
     throw error;
   }
 };
@@ -40,7 +45,9 @@ const signalProcessTree = async (
   signal: NodeJS.Signals
 ): Promise<void> => {
   if (process.platform === "win32") {
-    if (!child.pid) return;
+    if (!child.pid) {
+      return;
+    }
     const args = ["/PID", String(child.pid), "/T"];
     if (signal === "SIGKILL") args.push("/F");
     const taskkillPath = `${process.env.SystemRoot ?? "C:\\Windows"}\\System32\\taskkill.exe`;
@@ -62,6 +69,12 @@ const signalProcessTree = async (
   child.kill(signal);
 };
 
+/**
+ * Stop local Alchemy and clean up its inherited streams.
+ * @param dev - Local Alchemy child process.
+ * @param log - Progress logger.
+ * @returns Promise resolved when the process has been stopped.
+ */
 export const stopLocalDev = async (
   dev: ChildProcess,
   log: Log
@@ -85,6 +98,14 @@ export const stopLocalDev = async (
   dev.stdin?.destroy();
 };
 
+/**
+ * Start local Alchemy and wait for the Worker health endpoint.
+ * @param config - Credentials and Worker settings for local execution.
+ * @param profile - Optional Alchemy profile.
+ * @param signal - Workflow cancellation signal.
+ * @param log - Progress logger.
+ * @returns Child process and its local Worker URL.
+ */
 export const startLocalDev = async (
   config: E2EConfig,
   profile: string | undefined,
@@ -130,10 +151,15 @@ export const startLocalDev = async (
   try {
     const ready = await waitUntil(
       async (probeSignal) => {
-        if (spawnError) throw spawnError;
-        if (hasExited(dev))
+        if (spawnError) {
+          throw spawnError;
+        }
+        if (hasExited(dev)) {
           throw new Error(`Alchemy dev exited before ready:\n${output}`);
-        if (!foundUrl) return { ready: false, url: "http://localhost:8787" };
+        }
+        if (!foundUrl) {
+          return { ready: false, url: "http://localhost:8787" };
+        }
         try {
           const response = await request(
             `${foundUrl}/healthz`,
@@ -142,20 +168,28 @@ export const startLocalDev = async (
           );
           return { ready: response.ok, url: foundUrl };
         } catch (error) {
-          if (signal.aborted) throw error;
+          if (signal.aborted) {
+            throw error;
+          }
           return { ready: false, url: foundUrl };
         }
       },
       (result) => result.ready,
       1000,
       120_000,
-      `Timed out waiting for Alchemy dev:\n${output}`,
+      "Timed out waiting for Alchemy dev",
       signal
     );
     log(`Local Worker is ready at ${ready.url}.`, "success");
     return { process: dev, url: ready.url };
   } catch (error) {
     await stopLocalDev(dev, log);
+    if (
+      error instanceof Error &&
+      error.message === "Timed out waiting for Alchemy dev"
+    ) {
+      throw new Error(`${error.message}:\n${output}`, { cause: error });
+    }
     throw error;
   }
 };

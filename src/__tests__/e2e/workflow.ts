@@ -4,17 +4,17 @@ import {
   crosspostAnnouncement,
   createAnnouncement,
   verifyDiscord,
-} from "./discord.ts";
-import { startLocalDev, stopLocalDev } from "./local-worker.ts";
-import { photoAttachment } from "./photo-fixture.ts";
-import { announcementContent } from "./types.ts";
-import type { E2EOptions, LogTone } from "./types.ts";
+} from "@/__tests__/e2e/discord.ts";
+import { startLocalDev, stopLocalDev } from "@/__tests__/e2e/local-worker.ts";
+import { photoAttachment } from "@/__tests__/e2e/photo-fixture.ts";
+import { announcementContent } from "@/__tests__/e2e/types.ts";
+import type { E2EOptions, LogTone } from "@/__tests__/e2e/types.ts";
 import {
   pollBridge,
   seedCursor,
   waitForDelivery,
   waitForWorkerReady,
-} from "./worker.ts";
+} from "@/__tests__/e2e/worker.ts";
 
 const defaultLog = (message: string, tone: LogTone = "info"): void => {
   const colors: Record<LogTone, number> = {
@@ -30,69 +30,88 @@ const defaultLog = (message: string, tone: LogTone = "info"): void => {
   );
 };
 
+/**
+ * Run the end-to-end Discord-to-email workflow.
+ * @param options - Credentials, target mode, cancellation, and output options.
+ * @returns Effect that completes after the test delivery or fails with an error.
+ */
 export const runE2E = (options: E2EOptions): Effect.Effect<void, Error> =>
   Effect.gen(function* runE2EEffect() {
     const { config, signal } = options;
     const log = options.log ?? defaultLog;
-    let workerUrl = options.workerUrl;
-    let devProcess:
-      | Awaited<ReturnType<typeof startLocalDev>>["process"]
-      | undefined;
-    try {
-      if (options.remote) {
-        const remoteUrl = workerUrl;
-        if (!remoteUrl)
-          throw new Error("E2E_WORKER_URL is required when E2E_MODE=remote");
-        yield* Effect.promise(() =>
-          waitForWorkerReady(remoteUrl, config, signal)
-        );
-      } else {
-        const local = yield* Effect.promise(() =>
-          startLocalDev(config, options.profile, signal, log)
-        );
-        workerUrl = local.url;
-        devProcess = local.process;
-      }
+    const attachment = options.attachment ?? (yield* photoAttachment);
+    const run = (workerUrl: string) =>
+      runAnnouncement(options, attachment, workerUrl, log);
 
-      const targetUrl = workerUrl;
-      if (!targetUrl) throw new Error("Worker URL was not configured");
-      log(
-        "Checking Discord channel configuration and follower subscription..."
-      );
-      yield* Effect.promise(() => verifyDiscord(config, signal, log));
-      log("Seeding the bridge cursor before publishing the test post...");
-      yield* Effect.promise(() => seedCursor(targetUrl, config, signal));
-
-      const marker = `E2E ${crypto.randomUUID()}`;
-      const attachment = options.attachment ?? (yield* photoAttachment);
-      const messageId = yield* Effect.promise(() =>
-        createAnnouncement(
-          config,
-          marker,
-          announcementContent(marker),
-          signal,
-          attachment
-        )
-      );
-      log(`Created test announcement ${messageId}.`, "success");
-      const followerCopyId = yield* Effect.promise(() =>
-        crosspostAnnouncement(config, messageId, signal, log)
-      );
-      log("Follower copy appeared in the receiver channel.", "success");
-      log("Polling the bridge for the test crosspost...");
-      yield* Effect.promise(() => pollBridge(targetUrl, config, signal));
-      yield* Effect.promise(() =>
-        waitForDelivery(targetUrl, config, followerCopyId, signal, log)
-      );
-      log(
-        `E2E passed. Discord message ${messageId}; Worker recorded a successful Resend delivery.`,
-        "success"
-      );
-    } finally {
-      const localProcess = devProcess;
-      if (localProcess) {
-        yield* Effect.promise(() => stopLocalDev(localProcess, log));
-        log("Stopped local Alchemy dev.", "success");
+    if (options.remote) {
+      const remoteUrl = options.workerUrl;
+      if (!remoteUrl) {
+        return yield* Effect.fail(
+          new Error("E2E_WORKER_URL is required when E2E_MODE=remote")
+        );
       }
+      yield* attempt(() => waitForWorkerReady(remoteUrl, config, signal));
+      return yield* run(remoteUrl);
     }
+
+    return yield* Effect.acquireUseRelease(
+      attempt(() => startLocalDev(config, options.profile, signal, log)),
+      (local) => run(local.url),
+      (local) =>
+        attempt(() => stopLocalDev(local.process, log)).pipe(
+          Effect.tap(() =>
+            Effect.sync(() => log("Stopped local Alchemy dev.", "success"))
+          )
+        )
+    );
+  });
+
+const attempt = <A>(operation: () => Promise<A>): Effect.Effect<A, Error> =>
+  Effect.tryPromise({
+    catch: (cause) =>
+      cause instanceof Error ? cause : new Error(String(cause)),
+    try: operation,
+  });
+
+const runAnnouncement = (
+  options: E2EOptions,
+  attachment: NonNullable<E2EOptions["attachment"]>,
+  workerUrl: string,
+  log: (message: string, tone?: LogTone) => void
+): Effect.Effect<void, Error> =>
+  Effect.gen(function* runAnnouncementEffect() {
+    const { config, signal } = options;
+    log("Checking Discord channel configuration and follower subscription...");
+    yield* attempt(() => verifyDiscord(config, signal, log));
+    log("Seeding the bridge cursor before publishing the test post...");
+    yield* attempt(() => seedCursor(workerUrl, config, signal));
+
+    const marker = `E2E ${crypto.randomUUID()}`;
+    const messageId = yield* attempt(() =>
+      createAnnouncement(
+        config,
+        marker,
+        announcementContent(marker),
+        signal,
+        attachment
+      )
+    );
+    log(`Created test announcement ${messageId}.`, "success");
+    const expectedFilename =
+      attachment.kind === "bytes"
+        ? attachment.filename
+        : (attachment.filename ?? attachment.path.split(/[\\/]/u).at(-1));
+    const followerCopyId = yield* attempt(() =>
+      crosspostAnnouncement(config, messageId, signal, log, expectedFilename)
+    );
+    log("Follower copy appeared in the receiver channel.", "success");
+    log("Polling the bridge for the test crosspost...");
+    yield* attempt(() => pollBridge(workerUrl, config, signal));
+    yield* attempt(() =>
+      waitForDelivery(workerUrl, config, followerCopyId, signal, log)
+    );
+    log(
+      `E2E passed. Discord message ${messageId}; Worker recorded a successful Resend delivery.`,
+      "success"
+    );
   });

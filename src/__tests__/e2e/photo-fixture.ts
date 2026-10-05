@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 
 import { Effect } from "effect";
 
-import type { AnnouncementAttachment } from "./types.ts";
+import type { AnnouncementAttachment } from "@/__tests__/e2e/types.ts";
 
 /** Read the committed public-domain image used by the live Discord E2E. */
 export const photoAttachment: Effect.Effect<AnnouncementAttachment, Error> =

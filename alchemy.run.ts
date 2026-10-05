@@ -24,7 +24,7 @@ const Database = D1.Database("BridgeDatabase", {
 /** Cloudflare Worker entrypoint and infrastructure resources. */
 export const BridgeWorker = Worker("DiscordAnnouncementEmailBridge", {
   bundle: !usePrebuiltWorker,
-  compatibility: { date: "2026-10-03", flags: ["nodejs_compat"] },
+  compatibility: { date: "2026-09-25", flags: ["nodejs_compat"] },
   crons: workerConfig.crons,
   env: {
     ADMIN_TOKEN: Redacted("ADMIN_TOKEN").pipe(withDefault("")),

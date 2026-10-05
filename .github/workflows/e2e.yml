@@ -152,7 +152,7 @@ jobs:
             echo
             echo '```text'
             if [ -s "$RUNNER_TEMP/e2e.log" ]; then
-              grep -E '^(Checking Discord|Authenticated|Receiver channel|Seeding|Created test|Crossposted|Follower copy|Polling|Poll accepted|E2E passed|E2E failed|E2E script)' "$RUNNER_TEMP/e2e.log" || true
+              cat "$RUNNER_TEMP/e2e.log"
             else
               echo "No E2E runner log was produced."
             fi

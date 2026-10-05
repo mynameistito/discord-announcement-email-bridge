@@ -20,5 +20,6 @@
     },
     "noEmit": true
   },
-  "include": ["src/**/*.ts", "alchemy.run.ts"]
+  "include": ["src/**/*.ts", "alchemy.run.ts"],
+  "exclude": ["src/__tests__/e2e/**"]
 }

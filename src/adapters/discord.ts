@@ -11,7 +11,7 @@ import type { WorkerEnv } from "@/alchemy.run";
 import type { UnparsedDiscordMessage } from "@/application/polling";
 import { DiscordApiError } from "@/discord-api-error";
 import { WebhookSchema } from "@/domain";
-import type { FollowerWebhook } from "@/domain";
+import type { FollowerWebhook, SourceMetadata } from "@/domain";
 
 export type { FollowerWebhook } from "@/domain";
 
@@ -129,6 +129,47 @@ const webhook = (
     Effect.provide(discordLayer(env))
   );
 
+/** Read original-source labels and build the official CDN guild-icon URL. */
+const sourceMetadata = (
+  env: WorkerEnv,
+  guildId: string,
+  channelId: string
+): Effect.Effect<SourceMetadata, DiscordApiError> =>
+  Effect.all(
+    [
+      Services.discord.getChannel({ channel_id: channelId }),
+      Services.discord.getGuild({ guild_id: guildId }),
+    ],
+    { concurrency: 2 }
+  ).pipe(
+    Retry.none,
+    Effect.flatMap(([channel, guild]) =>
+      Effect.gen(function* decodeSourceMetadata() {
+        const channelData = yield* Schema.decodeUnknownEffect(
+          Schema.Struct({ name: Schema.String })
+        )(channel);
+        const guildData = yield* Schema.decodeUnknownEffect(
+          Schema.Struct({
+            icon: Schema.NullOr(Schema.String),
+            name: Schema.String,
+          })
+        )(guild);
+        const extension = guildData.icon?.startsWith("a_") ? "gif" : "png";
+        return {
+          channelName: channelData.name,
+          ...(guildData.icon
+            ? {
+                guildIconUrl: `https://cdn.discordapp.com/icons/${guildId}/${guildData.icon}.${extension}?size=128`,
+              }
+            : undefined),
+          guildName: guildData.name,
+        };
+      })
+    ),
+    Effect.mapError(toDiscordApiError),
+    Effect.provide(discordLayer(env))
+  );
+
 /**
  * Create polling ports bound to the supplied Worker's bot credentials.
  * Returned methods expose page-based message reads and validated webhook reads.
@@ -142,4 +183,6 @@ export const makeDiscordSource = (env: WorkerEnv) => ({
     messages(env, channelId, { before }),
   fetchLatest: (channelId: string) => messages(env, channelId, {}),
   getWebhook: (webhookId: string) => webhook(env, webhookId),
+  getSourceMetadata: (guildId: string, channelId: string) =>
+    sourceMetadata(env, guildId, channelId),
 });

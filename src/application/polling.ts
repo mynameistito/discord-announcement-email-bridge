@@ -3,7 +3,12 @@ import { Context, Effect, Layer } from "effect";
 import { pollSubscription } from "@/application/polling-subscription";
 import type { BridgeInfrastructureError } from "@/bridge-infrastructure-error";
 import type { DiscordApiError } from "@/discord-api-error";
-import type { Announcement, FollowerWebhook, Subscription } from "@/domain";
+import type {
+  Announcement,
+  FollowerWebhook,
+  SourceMetadata,
+  Subscription,
+} from "@/domain";
 
 /** Raw Discord data retained until application-level schema validation. */
 export interface UnparsedDiscordMessage {
@@ -37,6 +42,11 @@ export interface PollingPorts {
     readonly getWebhook: (
       webhookId: string
     ) => Effect.Effect<FollowerWebhook | null, DiscordApiError>;
+    /** Resolve display details for the original source guild and channel. */
+    readonly getSourceMetadata: (
+      guildId: string,
+      channelId: string
+    ) => Effect.Effect<SourceMetadata, DiscordApiError>;
   };
   /** Durable cursor, discovery, and pending-delivery repository operations. */
   readonly repository: {

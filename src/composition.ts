@@ -1,11 +1,11 @@
 import { Effect } from "effect";
 
+import { makeRepository } from "@/adapters/d1";
 import {
   claimDelivery as claimDeliveryInD1,
-  makeRepository,
   markDeadLetter,
   updateDeliveryFailure,
-} from "@/adapters/d1";
+} from "@/adapters/d1-deliveries";
 import { makeDiscordSource } from "@/adapters/discord";
 import { processQueue } from "@/adapters/queue";
 import type { QueueOperations } from "@/adapters/queue";

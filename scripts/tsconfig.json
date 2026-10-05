@@ -5,5 +5,5 @@
     "lib": ["ES2023"],
     "types": ["node"]
   },
-  "include": ["./**/*.ts"]
+  "include": ["./**/*.ts", "../src/__tests__/e2e/**/*.ts"]
 }

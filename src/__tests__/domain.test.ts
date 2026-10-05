@@ -179,4 +179,52 @@ describe("snowflakes and email rendering", () => {
       hasRawHtml: false,
     });
   });
+
+  it("renders the server header, formatted Markdown, UTC time, and linked images", () => {
+    const classified = classifyFollowerMessage(
+      message("100", {
+        attachments: [
+          {
+            content_type: "image/jpeg",
+            filename: "photo.jpg",
+            url: "https://cdn.discordapp.com/photo.jpg",
+          },
+        ],
+        content: "**Important update**",
+        embeds: [
+          {
+            description: "**Details**",
+            fields: [{ name: "Status", value: "*Planned*" }],
+          },
+        ],
+      }),
+      webhook,
+      subscription
+    );
+    if (!classified) {
+      throw new Error("fixture should classify");
+    }
+    const html = renderHtml({
+      ...classified,
+      sourceMetadata: {
+        channelName: "announcements",
+        guildIconUrl: "https://cdn.discordapp.com/icons/source-guild/hash.png",
+        guildName: "News server",
+      },
+    });
+
+    expect(html).toContain("border-radius:50%");
+    expect(html).toContain("News server");
+    expect(html).toContain(
+      'href="https://discord.com/channels/source-guild/source-channel/source-message"'
+    );
+    expect(html).toContain("#announcements");
+    expect(html).toContain("10:00 03/10/2026 UTC");
+    expect(html).toContain("<strong>Important update</strong>");
+    expect(html).toContain("<strong>Details</strong>");
+    expect(html).toContain("<em>Planned</em>");
+    expect(html).toContain(
+      '<a href="https://cdn.discordapp.com/photo.jpg"><img src="https://cdn.discordapp.com/photo.jpg" alt="photo.jpg"'
+    );
+  });
 });

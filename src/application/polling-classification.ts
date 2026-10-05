@@ -35,6 +35,7 @@ export const classifyMessages = (
   Effect.gen(function* classifyMessagesEffect() {
     const announcements: Announcement[] = [];
     const webhooks = new Map<string, FollowerWebhook | null>();
+    const sourceMetadata = new Map<string, Announcement["sourceMetadata"]>();
     for (const message of messages) {
       if (!message.webhook_id || !hasCrosspostFlag(message.flags ?? 0)) {
         continue;
@@ -55,7 +56,32 @@ export const classifyMessages = (
         subscription
       );
       if (announcement && hasReadableContent(message)) {
-        announcements.push(announcement);
+        const key = `${announcement.sourceGuildId}:${announcement.sourceChannelId}`;
+        if (!sourceMetadata.has(key)) {
+          const metadata = yield* ports.source
+            .getSourceMetadata(
+              announcement.sourceGuildId,
+              announcement.sourceChannelId
+            )
+            .pipe(
+              Effect.tapError(() =>
+                Effect.logWarning("announcement.source_metadata_unavailable", {
+                  channelId: announcement.sourceChannelId,
+                  guildId: announcement.sourceGuildId,
+                })
+              ),
+              Effect.catchIf(
+                () => true,
+                () => Effect.succeed(undefined)
+              )
+            );
+          sourceMetadata.set(key, metadata);
+        }
+        const metadata = sourceMetadata.get(key);
+        announcements.push({
+          ...announcement,
+          ...(metadata ? { sourceMetadata: metadata } : undefined),
+        });
       } else if (announcement) {
         console.warn(
           JSON.stringify({

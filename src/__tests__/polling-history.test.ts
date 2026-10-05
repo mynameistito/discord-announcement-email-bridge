@@ -41,6 +41,8 @@ describe("polling history pagination", () => {
           Effect.fail(new DiscordApiError("network error", 503, true)),
         fetchLatest: () => Effect.succeed([]),
         getWebhook: () => Effect.succeed(null),
+        getSourceMetadata: () =>
+          Effect.succeed({ channelName: "news", guildName: "server" }),
       },
     };
 
@@ -72,6 +74,8 @@ describe("polling history pagination", () => {
         fetchBefore: () => Effect.succeed([]),
         fetchLatest: () => Effect.succeed([]),
         getWebhook: () => Effect.succeed(null),
+        getSourceMetadata: () =>
+          Effect.succeed({ channelName: "news", guildName: "server" }),
       },
     };
 

@@ -129,7 +129,13 @@ const webhook = (
     Effect.provide(discordLayer(env))
   );
 
-/** Read original-source labels and build the official CDN guild-icon URL. */
+/**
+ * Read original-source labels and build the official CDN guild-icon URL.
+ * @param env - Worker bindings containing the Discord bot token.
+ * @param guildId - Original guild identifier.
+ * @param channelId - Original channel identifier.
+ * @returns Source labels and optional CDN icon URL.
+ */
 const sourceMetadata = (
   env: WorkerEnv,
   guildId: string,
@@ -161,7 +167,7 @@ const sourceMetadata = (
             ? {
                 guildIconUrl: `https://cdn.discordapp.com/icons/${guildId}/${guildData.icon}.${extension}?size=128`,
               }
-            : undefined),
+            : {}),
           guildName: guildData.name,
         };
       })
@@ -182,7 +188,7 @@ export const makeDiscordSource = (env: WorkerEnv) => ({
   fetchBefore: (channelId: string, before: string) =>
     messages(env, channelId, { before }),
   fetchLatest: (channelId: string) => messages(env, channelId, {}),
-  getWebhook: (webhookId: string) => webhook(env, webhookId),
   getSourceMetadata: (guildId: string, channelId: string) =>
     sourceMetadata(env, guildId, channelId),
+  getWebhook: (webhookId: string) => webhook(env, webhookId),
 });

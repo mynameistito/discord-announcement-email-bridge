@@ -58,8 +58,19 @@ export type DiscordMessage = typeof MessageSchema.Type;
 /** Runtime validator for webhook metadata used to verify Channel Follower origin. */
 export const WebhookSchema = Schema.Struct({
   id: Schema.String,
-  source_channel: Schema.optionalKey(Schema.Struct({ id: Schema.String })),
-  source_guild: Schema.optionalKey(Schema.Struct({ id: Schema.String })),
+  source_channel: Schema.optionalKey(
+    Schema.Struct({
+      id: Schema.String,
+      name: Schema.optionalKey(Schema.String),
+    })
+  ),
+  source_guild: Schema.optionalKey(
+    Schema.Struct({
+      icon: Schema.optionalKey(Schema.NullOr(Schema.String)),
+      id: Schema.String,
+      name: Schema.optionalKey(Schema.String),
+    })
+  ),
   type: Schema.Number,
 });
 

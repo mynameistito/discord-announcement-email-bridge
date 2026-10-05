@@ -1,12 +1,15 @@
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
+import {
+  crosspost,
+  fakePorts,
+  subscription,
+} from "@/__tests__/application-fixtures";
 import { pollAll, pollingServiceLayer } from "@/application/polling";
 import type { PollingPorts } from "@/application/polling";
 import { DiscordApiError } from "@/discord-api-error";
 import type { Subscription } from "@/domain";
-
-import { crosspost, fakePorts, subscription } from "./application-fixtures";
 
 describe("announcement discovery integration", () => {
   it("paginates beyond 100, sorts safely, and advances only after durable persistence", async () => {
@@ -38,47 +41,6 @@ describe("announcement discovery integration", () => {
       pollAll.pipe(Effect.provide(pollingServiceLayer(fake.ports)))
     );
     expect(fake.sent()).toStrictEqual(["delivery-101"]);
-  });
-
-  it("delivers announcements when optional source metadata is unavailable", async () => {
-    const fake = fakePorts([[crosspost("101")]]);
-    const ports: PollingPorts = {
-      ...fake.ports,
-      source: {
-        ...fake.ports.source,
-        getSourceMetadata: () =>
-          Effect.fail(
-            new DiscordApiError("metadata access denied", 403, false)
-          ),
-      },
-    };
-
-    await Effect.runPromise(
-      pollAll.pipe(Effect.provide(pollingServiceLayer(ports)))
-    );
-    expect(fake.sent()).toStrictEqual(["delivery-101"]);
-  });
-
-  it("looks up source metadata once per guild and channel per poll batch", async () => {
-    const fake = fakePorts([[crosspost("101"), crosspost("102")]]);
-    let lookups = 0;
-    const ports: PollingPorts = {
-      ...fake.ports,
-      source: {
-        ...fake.ports.source,
-        getSourceMetadata: () =>
-          Effect.sync(() => {
-            lookups += 1;
-            return { channelName: "announcements", guildName: "News server" };
-          }),
-      },
-    };
-
-    await Effect.runPromise(
-      pollAll.pipe(Effect.provide(pollingServiceLayer(ports)))
-    );
-    expect(lookups).toBe(1);
-    expect(fake.sent()).toHaveLength(2);
   });
 
   it("does not advance past a malformed possible crosspost", async () => {

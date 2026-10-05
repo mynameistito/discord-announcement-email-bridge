@@ -47,6 +47,8 @@ Copy `.env.example` to `.env` for local work. For deployed stages, configure pro
 
 The source filters are optional. When set, they provide an additional check against the source metadata on the follower webhook.
 
+The bridge uses the source channel and guild details returned with Discord's follower webhook when available, so the bot does not need to join the source guild for the email header. If Discord omits those details, the bridge tries a direct metadata lookup; if the source is not accessible, it still sends the email using the channel ID and without a server icon.
+
 ## Startup behavior
 
 The Worker creates a subscription for the configured destination and recipient. On first startup it sets the cursor to the latest observed message, so historical announcements are not sent. Configure a dedicated non-production stage for testing.

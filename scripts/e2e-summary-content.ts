@@ -30,23 +30,28 @@ const statusMark = (outcome: string): string => {
 
 /** Render the GitHub Actions summary for the isolated Discord E2E lifecycle. */
 export const renderE2ESummary = (input: E2ESummaryInput): string => {
-  const lines = ["", ""];
-  if (input.e2eOutcome === "success") {
-    lines.push("## ✅ Discord E2E passed");
-    lines.push(
-      input.jobStatus === "success"
-        ? "The complete Discord → Worker → Resend flow completed successfully."
-        : "The Discord → Worker → Resend flow passed, but another lifecycle step failed."
-    );
-  } else if (input.e2eOutcome === "failure") {
-    lines.push("## ❌ Discord E2E failed");
-    lines.push("Review the failed lifecycle step and its detailed log output.");
-  } else {
-    lines.push("## ⚠️ Discord E2E did not complete");
-    lines.push("Review the lifecycle outcomes and detailed log output.");
-  }
+  const heading =
+    input.e2eOutcome === "success"
+      ? [
+          "## ✅ Discord E2E passed",
+          input.jobStatus === "success"
+            ? "The complete Discord → Worker → Resend flow completed successfully."
+            : "The Discord → Worker → Resend flow passed, but another lifecycle step failed.",
+        ]
+      : input.e2eOutcome === "failure"
+        ? [
+            "## ❌ Discord E2E failed",
+            "Review the failed lifecycle step and its detailed log output.",
+          ]
+        : [
+            "## ⚠️ Discord E2E did not complete",
+            "Review the lifecycle outcomes and detailed log output.",
+          ];
 
-  lines.push(
+  const lines = [
+    "",
+    "",
+    ...heading,
     "",
     `**Workflow status:** \`${input.jobStatus}\``,
     "",
@@ -69,7 +74,7 @@ export const renderE2ESummary = (input: E2ESummaryInput): string => {
     "```text",
     input.e2eLog.trim() || "No E2E runner log was produced.",
     "```",
-    ""
-  );
+    "",
+  ];
   return lines.join("\n");
 };

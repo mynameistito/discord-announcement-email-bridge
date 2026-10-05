@@ -1,5 +1,5 @@
 import { appendFileSync } from "node:fs";
-import { join } from "node:path";
+import path from "node:path";
 
 import {
   configFromEnvironment,
@@ -31,7 +31,7 @@ const log = (message: string, tone: LogTone = "info"): void => {
 
   const runnerTemp = process.env.RUNNER_TEMP;
   if (runnerTemp) {
-    appendFileSync(join(runnerTemp, "e2e.log"), `${message}\n`, "utf8");
+    appendFileSync(path.join(runnerTemp, "e2e.log"), `${message}\n`, "utf-8");
   }
 };
 const requestShutdown = (signal: ShutdownSignal): void => {

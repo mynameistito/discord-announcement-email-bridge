@@ -1,5 +1,5 @@
 import { appendFile, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import path from "node:path";
 
 import type { E2ESummaryInput } from "@scripts/e2e-summary-content.ts";
 import { renderE2ESummary } from "@scripts/e2e-summary-content.ts";
@@ -16,7 +16,7 @@ const requiredEnvironment = (name: string): string => {
 
 const readE2ELog = async (path: string): Promise<string> => {
   try {
-    return await readFile(path, "utf8");
+    return await readFile(path, "utf-8");
   } catch {
     return "";
   }
@@ -25,7 +25,9 @@ const readE2ELog = async (path: string): Promise<string> => {
 const input: E2ESummaryInput = {
   deployOutcome: process.env.DEPLOY_OUTCOME ?? "unknown",
   destroyOutcome: process.env.DESTROY_OUTCOME ?? "unknown",
-  e2eLog: await readE2ELog(join(requiredEnvironment("RUNNER_TEMP"), "e2e.log")),
+  e2eLog: await readE2ELog(
+    path.join(requiredEnvironment("RUNNER_TEMP"), "e2e.log")
+  ),
   e2eOutcome: process.env.E2E_OUTCOME ?? "unknown",
   installOutcome: process.env.INSTALL_OUTCOME ?? "unknown",
   jobStatus: process.env.JOB_STATUS ?? "unknown",
@@ -38,5 +40,5 @@ const input: E2ESummaryInput = {
 await appendFile(
   requiredEnvironment("GITHUB_STEP_SUMMARY"),
   renderE2ESummary(input),
-  "utf8"
+  "utf-8"
 );

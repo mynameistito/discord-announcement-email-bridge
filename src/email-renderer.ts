@@ -164,6 +164,22 @@ const embedBorderColor = (color: number | undefined): string => {
   return ` style="border-left:4px solid #${color.toString(16).padStart(6, "0")};padding-left:12px"`;
 };
 
+const renderEmbedThumbnail = (
+  embed: DiscordMessage["embeds"][number]
+): string => {
+  const url = embed.thumbnail?.url;
+  if (!url) {
+    return "";
+  }
+  const image = linkedImage(
+    url,
+    embed.title ?? "Announcement thumbnail",
+    "display:block;width:80px;height:80px;max-width:80px;object-fit:cover;border-radius:8px"
+  );
+  const linkedUrl = `<a href="${escapeAttribute(url)}">${escapeHtml(url)}</a>`;
+  return `<td width="80" valign="top" style="width:80px;padding:0 0 12px 12px">${image || linkedUrl}</td>`;
+};
+
 /**
  * Render one Discord embed with formatted text and linked images.
  * @param embed - Discord embed data.
@@ -182,22 +198,22 @@ const renderEmbed = (embed: DiscordMessage["embeds"][number]): string => {
         `<p><strong>${renderInline(field.name ?? "")}</strong> ${renderInline(field.value ?? "")}</p>`
     )
     .join("");
-  const images = [embed.image?.url, embed.thumbnail?.url]
-    .filter((url): url is string => url !== undefined)
-    .map((url) => {
-      const image = linkedImage(
-        url,
+  const thumbnail = renderEmbedThumbnail(embed);
+  const content = `<div>${author}<h2>${linkedTitle}</h2><div>${description}</div>${fields}</div>`;
+  const mainContent = thumbnail
+    ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td valign="top">${content}</td>${thumbnail}</tr></table>`
+    : content;
+  const imageUrl = embed.image?.url;
+  const image = imageUrl
+    ? linkedImage(
+        imageUrl,
         embed.title ?? "Announcement image",
-        "max-width:100%;height:auto"
-      );
-      return (
-        image ||
-        `<p><a href="${escapeAttribute(url)}">${escapeHtml(url)}</a></p>`
-      );
-    })
-    .join("");
+        "display:block;max-width:100%;height:auto;margin:12px 0"
+      ) ||
+      `<p><a href="${escapeAttribute(imageUrl)}">${escapeHtml(imageUrl)}</a></p>`
+    : "";
   const footer = renderEmbedFooter(embed);
-  return `<section${embedBorderColor(embed.color)}>${author}<h2>${linkedTitle}</h2><div>${description}</div>${fields}${images}${footer}</section>`;
+  return `<section${embedBorderColor(embed.color)}>${mainContent}${image}${footer}</section>`;
 };
 
 /**

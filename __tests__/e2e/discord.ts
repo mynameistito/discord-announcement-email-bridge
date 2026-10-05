@@ -8,6 +8,8 @@ import type {
 } from "@tests/e2e/types.ts";
 
 type Log = (message: string, tone?: LogTone) => void;
+const suppressEmbedsFlag = 4;
+
 interface DiscordChannel {
   readonly guild_id: string;
   readonly type: number;
@@ -129,14 +131,17 @@ export const createAnnouncement = async (
           attachment.path.split(/[\\/]/u).at(-1) ??
           "fixture.bin");
     const form = new FormData();
-    form.set("payload_json", JSON.stringify({ content }));
+    form.set(
+      "payload_json",
+      JSON.stringify({ content, flags: suppressEmbedsFlag })
+    );
     const blobBytes = new Uint8Array(bytes.byteLength);
     blobBytes.set(bytes);
     form.set("files[0]", new Blob([blobBytes.buffer]), filename);
     init = { body: form, headers: authorization, method: "POST" };
   } else {
     init = {
-      body: JSON.stringify({ content }),
+      body: JSON.stringify({ content, flags: suppressEmbedsFlag }),
       headers: { ...authorization, "Content-Type": "application/json" },
       method: "POST",
     };

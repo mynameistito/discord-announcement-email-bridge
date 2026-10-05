@@ -123,7 +123,7 @@ op inject -i .env.e2e.tpl -o .env.e2e
 bun --env-file=.env.e2e run e2e
 ```
 
-This starts `alchemy dev` in the `e2e-local` stage, runs the live test against its local Worker, stops the dev process, and returns to the shell. To select the local Alchemy profile, pass `--profile mynameistito` (for example, `bun --env-file=.env.e2e run e2e --profile mynameistito`). It does not deploy or destroy a remote stage.
+This starts `alchemy dev` in the `e2e-local` stage, runs the live test against its local Worker, stops the dev process, and returns to the shell. To select the local Alchemy profile, pass `--profile <name>` (for example, `bun --env-file=.env.e2e run e2e --profile preview`). It does not deploy or destroy a remote stage.
 
 For GitHub Actions, manually run **Actions → Discord E2E → Run workflow**. It creates a unique non-production Alchemy stage, runs the same test against it, and destroys only that stage afterward. The E2E Worker URL currently uses the `mynameistito.workers.dev` account subdomain; update `.github/workflows/e2e.yml` if the Workers account or configured subdomain changes. Regular CI and pull requests never receive E2E credentials or publish messages.
 

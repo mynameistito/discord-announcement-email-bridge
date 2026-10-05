@@ -22,6 +22,16 @@ export interface FakeDelivery {
   status: "pending" | "queued" | "failed";
 }
 
+const matchesDeliveryIdentity = (
+  row: FakeDelivery,
+  id: string | undefined,
+  announcementId: string | undefined,
+  generation: string | undefined
+): boolean =>
+  row.id === id &&
+  row.announcementId === announcementId &&
+  row.generation === generation;
+
 /** Subscription state used to verify recovery is not restricted to enabled rows. */
 export interface FakeSubscription {
   readonly enabled: boolean;
@@ -63,6 +73,7 @@ const hasNoLiveLease = (row: FakeDelivery): boolean =>
  * @param row - Candidate delivery row.
  * @param id - Delivery ID bound to the claim statement.
  * @param announcementId - Announcement ID bound to the claim statement.
+ * @param generation - Queue generation bound to the claim statement.
  * @returns Whether the candidate satisfies the statement's predicates.
  */
 export const isClaimable = (
@@ -71,9 +82,7 @@ export const isClaimable = (
   announcementId: string | undefined,
   generation: string | undefined
 ): boolean =>
-  row.id === id &&
-  row.announcementId === announcementId &&
-  row.generation === generation &&
+  matchesDeliveryIdentity(row, id, announcementId, generation) &&
   hasClaimableStatus(row) &&
   hasNoLiveLease(row);
 
@@ -82,6 +91,7 @@ export const isClaimable = (
  * @param row - Candidate delivery row.
  * @param id - Delivery ID bound to the live-claim statement.
  * @param announcementId - Announcement ID bound to the live-claim statement.
+ * @param generation - Queue generation bound to the live-claim statement.
  * @returns Whether the candidate satisfies the statement's predicates.
  */
 export const hasActiveClaim = (
@@ -90,9 +100,7 @@ export const hasActiveClaim = (
   announcementId: string | undefined,
   generation: string | undefined
 ): boolean =>
-  row.id === id &&
-  row.announcementId === announcementId &&
-  row.generation === generation &&
+  matchesDeliveryIdentity(row, id, announcementId, generation) &&
   row.claimToken !== null &&
   !row.expired;
 

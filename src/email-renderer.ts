@@ -64,21 +64,10 @@ const formatTimestamp = (value: string): string => {
 };
 
 /**
- * Make remote image content clickable while keeping email markup simple.
- * @param url - Image URL.
- * @param alt - Image alternative text.
- * @param style - Inline image style.
- * @returns Linked image HTML, or an empty string for an unsafe URL.
+ * Restrict automatically loaded email images to Discord-owned media hosts.
+ * @param value - Candidate image URL.
+ * @returns Whether the URL uses a Discord-owned HTTPS media host.
  */
-const linkedImage = (url: string, alt: string, style: string): string => {
-  if (!isDiscordMediaUrl(url)) {
-    return "";
-  }
-  const safeUrl = escapeAttribute(url);
-  return `<a href="${safeUrl}"><img src="${safeUrl}" alt="${escapeHtml(alt)}" style="${style}" /></a>`;
-};
-
-/** Restrict automatically loaded email images to Discord-owned media hosts. */
 const isDiscordMediaUrl = (value: string): boolean => {
   try {
     const url = new URL(value);
@@ -92,6 +81,21 @@ const isDiscordMediaUrl = (value: string): boolean => {
   } catch {
     return false;
   }
+};
+
+/**
+ * Make remote image content clickable while keeping email markup simple.
+ * @param url - Image URL.
+ * @param alt - Image alternative text.
+ * @param style - Inline image style.
+ * @returns Linked image HTML, or an empty string for an unsafe URL.
+ */
+const linkedImage = (url: string, alt: string, style: string): string => {
+  if (!isDiscordMediaUrl(url)) {
+    return "";
+  }
+  const safeUrl = escapeAttribute(url);
+  return `<a href="${safeUrl}"><img src="${safeUrl}" alt="${escapeHtml(alt)}" style="${style}" /></a>`;
 };
 
 /**

@@ -123,7 +123,7 @@ export const jsonRequest = async <T>(
  * @param shutdownSignal - Signal that aborts the entire wait.
  * @returns The first value satisfying the completion predicate.
  */
-export const waitUntil = async <T>(
+export const waitUntil = <T>(
   operation: (signal: AbortSignal) => Promise<T>,
   isComplete: (value: T) => boolean,
   interval: number,

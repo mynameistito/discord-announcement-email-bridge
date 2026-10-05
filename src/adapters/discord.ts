@@ -160,15 +160,18 @@ const sourceMetadata = (
             name: Schema.String,
           })
         )(guild);
-        const extension = guildData.icon?.startsWith("a_") ? "gif" : "png";
-        return {
+        const metadata = {
           channelName: channelData.name,
-          ...(guildData.icon
-            ? {
-                guildIconUrl: `https://cdn.discordapp.com/icons/${guildId}/${guildData.icon}.${extension}?size=128`,
-              }
-            : {}),
           guildName: guildData.name,
+        };
+        const iconHash = guildData.icon;
+        if (!iconHash) {
+          return metadata;
+        }
+        const extension = iconHash.startsWith("a_") ? "gif" : "png";
+        return {
+          ...metadata,
+          guildIconUrl: `https://cdn.discordapp.com/icons/${encodeURIComponent(guildId)}/${encodeURIComponent(iconHash)}.${extension}?size=128`,
         };
       })
     ),

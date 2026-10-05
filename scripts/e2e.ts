@@ -5,8 +5,12 @@ import {
   parseProfile,
   validateMode,
 } from "../src/__tests__/e2e/config.ts";
-import type { LogTone } from "../src/__tests__/e2e/types.ts";
+import type { E2EOptions, LogTone } from "../src/__tests__/e2e/types.ts";
 import { runE2E } from "../src/__tests__/e2e/workflow.ts";
+
+type MutableE2EOptions = {
+  -readonly [Key in keyof E2EOptions]: E2EOptions[Key];
+};
 
 type ShutdownSignal = "SIGINT" | "SIGTERM";
 const controller = new AbortController();
@@ -43,14 +47,12 @@ try {
   const remote = process.env.E2E_MODE === "remote";
   validateMode(remote, profile);
   const config = configFromEnvironment(process.env);
-  const options: {
-    config: typeof config;
-    log: typeof log;
-    profile?: string;
-    remote: boolean;
-    signal: AbortSignal;
-    workerUrl?: string;
-  } = { config, log, remote, signal: controller.signal };
+  const options: MutableE2EOptions = {
+    config,
+    log,
+    remote,
+    signal: controller.signal,
+  };
   if (process.env.E2E_WORKER_URL) {
     options.workerUrl = process.env.E2E_WORKER_URL;
   }

@@ -35,13 +35,12 @@ const defaultLog = (message: string, tone: LogTone = "info"): void => {
  * @param options - Credentials, target mode, cancellation, and output options.
  * @returns Effect that completes after the test delivery or fails with an error.
  */
-export const runE2E = (options: E2EOptions): Effect.Effect<void, Error> =>
-  Effect.gen(function* runE2EEffect() {
+export function runE2E(options: E2EOptions): Effect.Effect<void, Error> {
+  return Effect.gen(function* runE2EEffect() {
     const { config, signal } = options;
     const log = options.log ?? defaultLog;
     const attachment = options.attachment ?? (yield* photoAttachment);
-    const run = (workerUrl: string) =>
-      runAnnouncement(options, attachment, workerUrl, log);
+    const run = runAnnouncement.bind(undefined, options, attachment, log);
 
     if (options.remote) {
       const remoteUrl = options.workerUrl;
@@ -57,29 +56,37 @@ export const runE2E = (options: E2EOptions): Effect.Effect<void, Error> =>
     return yield* Effect.acquireUseRelease(
       attempt(() => startLocalDev(config, options.profile, signal, log)),
       (local) => run(local.url),
-      (local) =>
-        attempt(() => stopLocalDev(local.process, log)).pipe(
-          Effect.tap(() =>
-            Effect.sync(() => log("Stopped local Alchemy dev.", "success"))
-          )
-        )
+      (local) => stopLocalDevEffect(local, log)
     );
   });
+}
 
-const attempt = <A>(operation: () => Promise<A>): Effect.Effect<A, Error> =>
-  Effect.tryPromise({
+function attempt<A>(operation: () => Promise<A>): Effect.Effect<A, Error> {
+  return Effect.tryPromise({
     catch: (cause) =>
       cause instanceof Error ? cause : new Error(String(cause)),
     try: operation,
   });
+}
 
-const runAnnouncement = (
+function stopLocalDevEffect(
+  local: Awaited<ReturnType<typeof startLocalDev>>,
+  log: (message: string, tone?: LogTone) => void
+): Effect.Effect<void, Error> {
+  return attempt(() => stopLocalDev(local.process, log)).pipe(
+    Effect.tap(() =>
+      Effect.sync(() => log("Stopped local Alchemy dev.", "success"))
+    )
+  );
+}
+
+function runAnnouncement(
   options: E2EOptions,
   attachment: NonNullable<E2EOptions["attachment"]>,
-  workerUrl: string,
-  log: (message: string, tone?: LogTone) => void
-): Effect.Effect<void, Error> =>
-  Effect.gen(function* runAnnouncementEffect() {
+  log: (message: string, tone?: LogTone) => void,
+  workerUrl: string
+): Effect.Effect<void, Error> {
+  return Effect.gen(function* runAnnouncementEffect() {
     const { config, signal } = options;
     log("Checking Discord channel configuration and follower subscription...");
     yield* attempt(() => verifyDiscord(config, signal, log));
@@ -115,3 +122,4 @@ const runAnnouncement = (
       "success"
     );
   });
+}

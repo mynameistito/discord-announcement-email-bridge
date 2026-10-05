@@ -49,7 +49,9 @@ const signalProcessTree = async (
       return;
     }
     const args = ["/PID", String(child.pid), "/T"];
-    if (signal === "SIGKILL") args.push("/F");
+    if (signal === "SIGKILL") {
+      args.push("/F");
+    }
     const taskkillPath = `${process.env.SystemRoot ?? "C:\\Windows"}\\System32\\taskkill.exe`;
     const taskkill = spawn(taskkillPath, args, {
       stdio: "ignore",

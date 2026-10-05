@@ -18,13 +18,18 @@ const sourceMetadataFromWebhook = (
   if (!guild?.name || !channel?.name) {
     return undefined;
   }
-  const icon = guild.icon
-    ? `https://cdn.discordapp.com/icons/${encodeURIComponent(guild.id)}/${encodeURIComponent(guild.icon)}.${guild.icon.startsWith("a_") ? "gif" : "png"}?size=128`
-    : undefined;
-  return {
+  const iconHash = guild.icon;
+  const metadata = {
     channelName: channel.name,
-    ...(icon ? { guildIconUrl: icon } : {}),
     guildName: guild.name,
+  };
+  if (!iconHash) {
+    return metadata;
+  }
+  const extension = iconHash.startsWith("a_") ? "gif" : "png";
+  return {
+    ...metadata,
+    guildIconUrl: `https://cdn.discordapp.com/icons/${encodeURIComponent(guild.id)}/${encodeURIComponent(iconHash)}.${extension}?size=128`,
   };
 };
 
@@ -106,10 +111,11 @@ export const classifyMessages = (
           sourceMetadata.set(key, metadata);
         }
         const metadata = sourceMetadata.get(key);
-        announcements.push({
-          ...announcement,
-          ...(metadata ? { sourceMetadata: metadata } : {}),
-        });
+        if (metadata) {
+          announcements.push({ ...announcement, sourceMetadata: metadata });
+        } else {
+          announcements.push(announcement);
+        }
       } else if (announcement) {
         console.warn(
           JSON.stringify({

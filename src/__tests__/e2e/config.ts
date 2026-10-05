@@ -1,5 +1,9 @@
 import type { E2EConfig } from "@/__tests__/e2e/types.ts";
 
+type MutableOptionalConfig = {
+  -readonly [Key in "accessClientId" | "accessClientSecret"]?: string;
+};
+
 /**
  * Parse an optional Alchemy profile argument.
  * @param args - Command-line arguments.
@@ -25,10 +29,7 @@ export const parseProfile = (args: readonly string[]): string | undefined => {
  * @returns Validated E2E configuration.
  */
 export const configFromEnvironment = (env: NodeJS.ProcessEnv): E2EConfig => {
-  const optionalConfig: {
-    accessClientId?: string;
-    accessClientSecret?: string;
-  } = {};
+  const optionalConfig: MutableOptionalConfig = {};
   if (env.CF_ACCESS_CLIENT_ID) {
     optionalConfig.accessClientId = env.CF_ACCESS_CLIENT_ID;
   }

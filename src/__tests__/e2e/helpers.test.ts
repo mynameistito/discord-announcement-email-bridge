@@ -1,11 +1,19 @@
+import { setTimeout as pause } from "node:timers/promises";
+
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { configFromEnvironment, parseProfile, validateMode } from "./config.ts";
-import { waitUntil } from "./http.ts";
-import { photoAttachment } from "./photo-fixture.ts";
-import { announcementContent } from "./types.ts";
-import { normalizedWorkerUrl } from "./worker.ts";
+import {
+  configFromEnvironment,
+  parseProfile,
+  validateMode,
+} from "@/__tests__/e2e/config.ts";
+import { waitUntil } from "@/__tests__/e2e/http.ts";
+import { photoAttachment } from "@/__tests__/e2e/photo-fixture.ts";
+import { announcementContent } from "@/__tests__/e2e/types.ts";
+import { normalizedWorkerUrl } from "@/__tests__/e2e/worker.ts";
+
+const delayedProbe = (delay: number) => () => pause(delay).then(() => true);
 
 describe("E2E helpers", () => {
   it("parses profile flags in both supported forms", () => {
@@ -50,7 +58,7 @@ describe("E2E helpers", () => {
         "`const e2e = true`",
         "[Discord API](https://discord.com/developers/docs/intro)",
       ].every((example) => content.includes(example))
-    ).toBe(true);
+    ).toBeTruthy();
   });
 
   it("loads the committed JPEG used by the live Discord upload", async () => {
@@ -65,14 +73,9 @@ describe("E2E helpers", () => {
   });
 
   it("does not accept a successful probe that completes after its deadline", async () => {
-    const operation = async () => {
-      await new Promise((resolve) => setTimeout(resolve, 20));
-      return true;
-    };
-
     await expect(
       waitUntil(
-        operation,
+        delayedProbe(20),
         Boolean,
         1,
         5,

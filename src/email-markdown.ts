@@ -21,6 +21,34 @@ const listType = (line: string): "ul" | "ol" | undefined => {
 const listContent = (line: string, type: "ul" | "ol"): string =>
   line.replace(type === "ul" ? /^\s*[-*+]\s+/u : /^\s*\d+[.)]\s+/u, "");
 
+const parseFence = (
+  line: string
+): { readonly character: string; readonly length: number } | undefined => {
+  const candidate = line.trimStart();
+  const [character] = candidate;
+  if (character !== "`" && character !== "~") {
+    return undefined;
+  }
+  let length = 0;
+  while (candidate[length] === character) {
+    length += 1;
+  }
+  return length >= 3 ? { character, length } : undefined;
+};
+
+const isClosingFence = (
+  line: string,
+  character: string,
+  minimumLength: number
+): boolean => {
+  const candidate = line.trimStart();
+  let length = 0;
+  while (candidate[length] === character) {
+    length += 1;
+  }
+  return length >= minimumLength && candidate.slice(length).trim() === "";
+};
+
 interface RenderedBlock {
   readonly html: string;
   readonly next: number;
@@ -50,34 +78,6 @@ const renderCodeBlock = (
     html: `<pre><code>${escapeEmailHtml(code.join("\n"))}</code></pre>`,
     next,
   };
-};
-
-const parseFence = (
-  line: string
-): { readonly character: string; readonly length: number } | undefined => {
-  const candidate = line.trimStart();
-  const character = candidate[0];
-  if (character !== "`" && character !== "~") {
-    return undefined;
-  }
-  let length = 0;
-  while (candidate[length] === character) {
-    length += 1;
-  }
-  return length >= 3 ? { character, length } : undefined;
-};
-
-const isClosingFence = (
-  line: string,
-  character: string,
-  minimumLength: number
-): boolean => {
-  const candidate = line.trimStart();
-  let length = 0;
-  while (candidate[length] === character) {
-    length += 1;
-  }
-  return length >= minimumLength && candidate.slice(length).trim() === "";
 };
 
 const renderHeading = (
@@ -158,13 +158,14 @@ const renderBlock = (
   index: number
 ): RenderedBlock => {
   const line = lines[index] ?? "";
-  return (
-    renderCodeBlock(lines, index) ??
-    renderHeading(line, index) ??
-    renderQuote(lines, index) ??
-    renderList(lines, index) ??
-    renderParagraph(lines, index)
-  );
+  const code = renderCodeBlock(lines, index);
+  if (code) return code;
+  const heading = renderHeading(line, index);
+  if (heading) return heading;
+  const quote = renderQuote(lines, index);
+  if (quote) return quote;
+  const list = renderList(lines, index);
+  return list ?? renderParagraph(lines, index);
 };
 
 /**

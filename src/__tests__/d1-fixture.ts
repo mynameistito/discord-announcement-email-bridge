@@ -102,19 +102,17 @@ export const makeD1Fixture = (): D1Fixture => {
         run(): Promise<D1Result> {
           if (query === deadLetterSql) {
             const [id, generation] = values;
-            const delivery = deliveries.find(
-              (row) => {
-                const matchesIdAndGeneration =
-                  row.id === id && row.generation === generation;
-                const isUnclaimedOrExpired =
-                  row.claimToken === null || row.expired;
-                return (
-                  matchesIdAndGeneration &&
-                  row.status === "queued" &&
-                  isUnclaimedOrExpired
-                );
-              }
-            );
+            const delivery = deliveries.find((row) => {
+              const matchesIdAndGeneration =
+                row.id === id && row.generation === generation;
+              const isUnclaimedOrExpired =
+                row.claimToken === null || row.expired;
+              return (
+                matchesIdAndGeneration &&
+                row.status === "queued" &&
+                isUnclaimedOrExpired
+              );
+            });
             if (!delivery) {
               return Promise.resolve(d1Result([], 0));
             }

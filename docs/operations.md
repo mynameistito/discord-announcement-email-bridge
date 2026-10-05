@@ -21,20 +21,20 @@ Review the failure cause before replaying. Resend idempotency keys are retained 
 
 ## Polling failures
 
-The cron diagnostic identifies the Discord REST endpoint without logging channel or webhook IDs. A 403 remains a polling failure and does not advance the cursor. A webhook lookup returning 404 is different: the message is treated as missing follower metadata, skipped, and the cursor may advance.
+Cron failures currently expose only a sanitized high-level error; they do not include Discord endpoint names, numeric error codes, or resource IDs. Use the endpoint table below to check likely permissions and configuration. A 403 remains a polling failure and does not advance the cursor. A webhook lookup returning 404 is different: the message is treated as missing follower metadata, skipped, and the cursor may advance.
 
 | Endpoint | What to check |
 | --- | --- |
 | `GET /channels/{channel_id}/messages` | The bot is installed in the destination guild and has `VIEW_CHANNEL` and `READ_MESSAGE_HISTORY`, including channel-specific overwrites. Confirm the configured IDs point to the channel receiving followed posts. |
 | `GET /webhooks/{webhook_id}` | The bot has `MANAGE_WEBHOOKS` in the watched destination channel. Strict verification does not trust `webhook_id` alone. |
 
-Common Discord diagnostics:
+When checking a direct Discord response:
 
 - `50001` means `Missing Access`; check that the bot can access the target resource.
 - `50013` means `Missing Permissions`; check the permissions for the endpoint reported above.
 - An HTTP 403 alone does not identify the missing permission or configuration.
 
-The diagnostic contains only the known numeric Discord error code and an allowlisted standard message. Do not share bot tokens, response bodies, message contents, or resource IDs in logs or support requests.
+Do not share bot tokens, response bodies, message contents, or resource IDs in logs or support requests.
 
 ## Delivery and logging
 

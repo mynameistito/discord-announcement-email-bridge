@@ -174,7 +174,8 @@ export const createAnnouncement = async (
 
 const preservesRichEmbed = (
   message: DiscordMessage,
-  expectedTitle: string
+  expectedTitle: string,
+  expectedImageFilename?: string
 ): boolean => {
   const embed = message.embeds?.find((item) => item.title === expectedTitle);
   if (!embed?.author?.name || !embed.author.icon_url) {
@@ -186,8 +187,21 @@ const preservesRichEmbed = (
   if (!embed.footer?.text || !embed.footer.icon_url) {
     return false;
   }
-  if (!embed.image?.url?.startsWith("https://")) {
+  const imageUrl = embed.image?.url;
+  if (!imageUrl?.startsWith("https://")) {
     return false;
+  }
+  if (expectedImageFilename) {
+    try {
+      const imageFilename = decodeURIComponent(
+        new URL(imageUrl).pathname.split("/").at(-1) ?? ""
+      );
+      if (imageFilename !== expectedImageFilename) {
+        return false;
+      }
+    } catch {
+      return false;
+    }
   }
   return Boolean(embed.thumbnail?.url?.startsWith("https://"));
 };
@@ -196,7 +210,7 @@ const preservesRichEmbed = (
  * Check whether a follower copy has propagated with all expected content.
  * @param message - Message returned from the receiver channel.
  * @param messageId - Source announcement identifier.
- * @param expectedFilename - Optional upload filename to verify in the copy.
+ * @param expectedFilename - Optional upload filename to verify in the copy or embed.
  * @param expectedEmbedTitle - Optional rich embed title to verify in the copy.
  * @returns Whether this is a complete follower copy for the announcement.
  */
@@ -209,13 +223,15 @@ export const isCompleteFollowerCopy = (
   if (!message.id || message.message_reference?.message_id !== messageId) {
     return false;
   }
-  if (
-    expectedFilename &&
-    !message.attachments?.some(({ filename }) => filename === expectedFilename)
-  ) {
-    return false;
+  if (expectedEmbedTitle) {
+    return preservesRichEmbed(message, expectedEmbedTitle, expectedFilename);
   }
-  return !expectedEmbedTitle || preservesRichEmbed(message, expectedEmbedTitle);
+  return (
+    !expectedFilename ||
+    Boolean(
+      message.attachments?.some(({ filename }) => filename === expectedFilename)
+    )
+  );
 };
 
 /**
@@ -224,7 +240,7 @@ export const isCompleteFollowerCopy = (
  * @param messageId - Original announcement identifier.
  * @param signal - Workflow cancellation signal.
  * @param log - Progress logger.
- * @param expectedFilename - Optional upload filename to verify in the copy.
+ * @param expectedFilename - Optional upload filename to verify in the copy or embed.
  * @param expectedEmbedTitle - Optional rich embed title to verify in the copy.
  * @returns The follower copy message identifier.
  */

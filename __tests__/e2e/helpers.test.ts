@@ -1,3 +1,6 @@
+import { spawn } from "node:child_process";
+import { once } from "node:events";
+import process from "node:process";
 import { setTimeout as pause } from "node:timers/promises";
 
 import {
@@ -7,6 +10,7 @@ import {
 } from "@tests/e2e/config.ts";
 import { isCompleteFollowerCopy } from "@tests/e2e/discord.ts";
 import { waitUntil } from "@tests/e2e/http.ts";
+import { waitForExit } from "@tests/e2e/local-worker.ts";
 import { photoAttachment } from "@tests/e2e/photo-fixture.ts";
 import {
   announcementContent,
@@ -111,7 +115,7 @@ describe("E2E helpers", () => {
     );
   });
 
-  it("waits for follower attachment and embed data before accepting the copy", () => {
+  it("recognizes an embedded attachment without separate attachment metadata", () => {
     const followerCopy = {
       id: "follower-message",
       message_reference: { message_id: "source-message" },
@@ -139,7 +143,6 @@ describe("E2E helpers", () => {
       isCompleteFollowerCopy(
         {
           ...followerCopy,
-          attachments: [{ filename: "e2e-photo.jpg" }],
           embeds: [
             {
               author: {
@@ -151,7 +154,9 @@ describe("E2E helpers", () => {
                 icon_url: "https://example.test/footer.png",
                 text: "E2E webhook embed",
               },
-              image: { url: "https://example.test/photo.jpg" },
+              image: {
+                url: "https://cdn.discordapp.com/attachments/1/2/e2e-photo.jpg?ex=abc",
+              },
               thumbnail: { url: "https://example.test/thumbnail.png" },
               title: "E2E rich embed",
             },
@@ -175,5 +180,23 @@ describe("E2E helpers", () => {
         new AbortController().signal
       )
     ).rejects.toThrow("probe deadline exceeded");
+  });
+
+  it("treats an aborted exit-wait signal as a timeout", async () => {
+    const child = spawn(
+      process.execPath,
+      ["-e", "setInterval(() => {}, 1000)"],
+      { stdio: "ignore" }
+    );
+    try {
+      await once(child, "spawn");
+      await expect(waitForExit(child, 1)).resolves.toBeFalsy();
+    } finally {
+      if (child.exitCode === null && child.signalCode === null) {
+        const exit = once(child, "exit");
+        child.kill("SIGKILL");
+        await exit;
+      }
+    }
   });
 });

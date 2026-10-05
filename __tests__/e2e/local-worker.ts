@@ -1,6 +1,8 @@
+import type { Buffer } from "node:buffer";
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
 import { once } from "node:events";
+import process from "node:process";
 
 import { request, waitUntil } from "@tests/e2e/http.ts";
 import type { E2EConfig, LogTone } from "@tests/e2e/types.ts";

@@ -1,5 +1,6 @@
 import { appendFile, readFile } from "node:fs/promises";
 import path from "node:path";
+import process from "node:process";
 
 import type { E2ESummaryInput } from "@scripts/e2e-summary-content.ts";
 import { renderE2ESummary } from "@scripts/e2e-summary-content.ts";

@@ -1,4 +1,4 @@
-# __tests__/e2e KNOWLEDGE BASE
+# **tests**/e2e KNOWLEDGE BASE
 
 ## OVERVIEW
 

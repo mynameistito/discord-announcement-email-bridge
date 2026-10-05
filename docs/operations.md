@@ -42,7 +42,7 @@ Cloudflare Queues provide at-least-once delivery. D1 records the durable deliver
 
 ## Automated live E2E test
 
-The live E2E test publishes a uniquely marked post to a dedicated Discord Announcement Channel, crossposts it, verifies that the receiver already follows the source, waits for the follower copy, polls the bridge, and waits for `/admin/status` to record a successful Resend delivery. It leaves the Discord messages in place as an audit trail and sends a real email to the configured test recipient.
+The live E2E test publishes a uniquely marked post containing Discord Markdown and a committed public-domain landscape photo to a dedicated Discord Announcement Channel, crossposts it, verifies that the receiver already follows the source, waits for the follower copy, polls the bridge, and waits for `/admin/status` to record a successful Resend delivery. It leaves the Discord messages in place as an audit trail and sends a real email to the configured test recipient.
 
 Never use production channels, recipients, or Resend credentials.
 

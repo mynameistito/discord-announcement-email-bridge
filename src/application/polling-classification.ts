@@ -6,8 +6,32 @@ import type {
   Announcement,
   DiscordMessage,
   FollowerWebhook,
+  SourceMetadata,
   Subscription,
 } from "@/domain";
+
+const sourceMetadataFromWebhook = (
+  webhook: FollowerWebhook | null
+): SourceMetadata | undefined => {
+  const guild = webhook?.source_guild;
+  const channel = webhook?.source_channel;
+  if (!guild?.name || !channel?.name) {
+    return undefined;
+  }
+  const iconHash = guild.icon;
+  const metadata = {
+    channelName: channel.name,
+    guildName: guild.name,
+  };
+  if (!iconHash) {
+    return metadata;
+  }
+  const extension = iconHash.startsWith("a_") ? "gif" : "png";
+  return {
+    ...metadata,
+    guildIconUrl: `https://cdn.discordapp.com/icons/${encodeURIComponent(guild.id)}/${encodeURIComponent(iconHash)}.${extension}?size=128`,
+  };
+};
 
 /**
  * Determine whether the message has content worth sending in an email.
@@ -35,6 +59,10 @@ export const classifyMessages = (
   Effect.gen(function* classifyMessagesEffect() {
     const announcements: Announcement[] = [];
     const webhooks = new Map<string, FollowerWebhook | null>();
+    const sourceMetadata = new Map<
+      string,
+      Announcement["sourceMetadata"] | null
+    >();
     for (const message of messages) {
       if (!message.webhook_id || !hasCrosspostFlag(message.flags ?? 0)) {
         continue;
@@ -55,7 +83,39 @@ export const classifyMessages = (
         subscription
       );
       if (announcement && hasReadableContent(message)) {
-        announcements.push(announcement);
+        const key = `${announcement.sourceGuildId}:${announcement.sourceChannelId}`;
+        if (!sourceMetadata.has(key)) {
+          const webhookMetadata = sourceMetadataFromWebhook(webhook);
+          const metadata =
+            webhookMetadata ??
+            (yield* ports.source
+              .getSourceMetadata(
+                announcement.sourceGuildId,
+                announcement.sourceChannelId
+              )
+              .pipe(
+                Effect.tapError(() =>
+                  Effect.logWarning(
+                    "announcement.source_metadata_unavailable",
+                    {
+                      channelId: announcement.sourceChannelId,
+                      guildId: announcement.sourceGuildId,
+                    }
+                  )
+                ),
+                Effect.catchIf(
+                  () => true,
+                  () => Effect.succeed(null)
+                )
+              ));
+          sourceMetadata.set(key, metadata);
+        }
+        const metadata = sourceMetadata.get(key);
+        if (metadata) {
+          announcements.push({ ...announcement, sourceMetadata: metadata });
+        } else {
+          announcements.push(announcement);
+        }
       } else if (announcement) {
         console.warn(
           JSON.stringify({

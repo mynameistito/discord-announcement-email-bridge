@@ -9,6 +9,7 @@ import { DiscordApiError } from "@/discord-api-error";
 const QueuePayloadSchema = Schema.Struct({
   announcementId: Schema.String,
   deliveryId: Schema.String,
+  generation: Schema.optionalKey(Schema.String),
 });
 
 /** The ownership outcome returned by the delivery claim boundary. */
@@ -20,7 +21,8 @@ export interface QueueOperations {
   readonly claimDelivery: (
     deliveryId: string,
     announcementId: string,
-    claimToken: string
+    claimToken: string,
+    generation: string
   ) => Effect.Effect<DeliveryClaim, unknown>;
   /** Send a delivery that the caller has already claimed. */
   readonly delivery: (
@@ -30,7 +32,8 @@ export interface QueueOperations {
   ) => Effect.Effect<void, unknown>;
   /** Mark a delivery failed when a message reaches the dead-letter queue. */
   readonly failDeadLetter: (
-    deliveryId: string
+    deliveryId: string,
+    generation: string
   ) => Effect.Effect<boolean, unknown>;
   /** Persist the outcome of a failed attempt owned by the supplied claim. */
   readonly recordFailure: (
@@ -85,9 +88,10 @@ export const processQueue = async (
         );
         return;
       }
+      const generation = payload.value.generation ?? "initial";
       if (batch.queue === deadLetterQueueName) {
         const exit = await Effect.runPromiseExit(
-          operations.failDeadLetter(payload.value.deliveryId)
+          operations.failDeadLetter(payload.value.deliveryId, generation)
         );
         if (exit._tag === "Failure") {
           console.error(
@@ -110,7 +114,8 @@ export const processQueue = async (
         operations.claimDelivery(
           payload.value.deliveryId,
           payload.value.announcementId,
-          claimToken
+          claimToken,
+          generation
         )
       );
       if (claim._tag === "Failure") {

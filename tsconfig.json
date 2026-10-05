@@ -5,7 +5,7 @@
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "lib": ["ES2023", "WebWorker"],
-    "types": ["@cloudflare/workers-types"],
+    "types": ["@cloudflare/workers-types", "node"],
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
@@ -16,9 +16,16 @@
     "allowImportingTsExtensions": true,
     "paths": {
       "@/alchemy.run": ["./alchemy.run.ts"],
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@tests/*": ["./__tests__/*"],
+      "@scripts/*": ["./scripts/*"]
     },
     "noEmit": true
   },
-  "include": ["src/**/*.ts", "alchemy.run.ts"]
+  "include": [
+    "src/**/*.ts",
+    "scripts/**/*.ts",
+    "__tests__/**/*.ts",
+    "alchemy.run.ts"
+  ]
 }

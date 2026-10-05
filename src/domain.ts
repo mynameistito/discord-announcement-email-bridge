@@ -12,6 +12,7 @@ const AuthorSchema = Schema.Struct({ username: Schema.String });
 
 /** Runtime contract for attachment names and downloadable URLs. */
 const AttachmentSchema = Schema.Struct({
+  content_type: Schema.optionalKey(Schema.NullOr(Schema.String)),
   filename: Schema.String,
   url: Schema.String,
 });
@@ -57,8 +58,19 @@ export type DiscordMessage = typeof MessageSchema.Type;
 /** Runtime validator for webhook metadata used to verify Channel Follower origin. */
 export const WebhookSchema = Schema.Struct({
   id: Schema.String,
-  source_channel: Schema.optionalKey(Schema.Struct({ id: Schema.String })),
-  source_guild: Schema.optionalKey(Schema.Struct({ id: Schema.String })),
+  source_channel: Schema.optionalKey(
+    Schema.Struct({
+      id: Schema.String,
+      name: Schema.optionalKey(Schema.String),
+    })
+  ),
+  source_guild: Schema.optionalKey(
+    Schema.Struct({
+      icon: Schema.optionalKey(Schema.NullOr(Schema.String)),
+      id: Schema.String,
+      name: Schema.optionalKey(Schema.String),
+    })
+  ),
   type: Schema.Number,
 });
 
@@ -84,6 +96,16 @@ export interface Subscription {
   readonly sourceChannelId?: string;
 }
 
+/** Runtime contract for optional source guild/channel email presentation data. */
+export const SourceMetadataSchema = Schema.Struct({
+  channelName: Schema.String,
+  guildIconUrl: Schema.optionalKey(Schema.String),
+  guildName: Schema.String,
+});
+
+/** Parsed metadata used to present an announcement in email. */
+export type SourceMetadata = typeof SourceMetadataSchema.Type;
+
 /**
  * A verified follower crosspost enriched with its source identifiers and
  * subscription identity for durable storage and later delivery.
@@ -101,6 +123,8 @@ export interface Announcement {
   readonly sourceMessageId: string;
   /** Webhook ID whose metadata confirmed the follower relationship. */
   readonly followerWebhookId: string;
+  /** Best-effort source names and icon URL resolved during discovery. */
+  readonly sourceMetadata?: SourceMetadata;
 }
 
 /**
@@ -223,114 +247,4 @@ export const oldestFirst = (
 ): readonly DiscordMessage[] =>
   messages.toSorted((left, right) => compareSnowflakes(left.id, right.id));
 
-/**
- * Escape HTML metacharacters before inserting untrusted Discord content.
- * @param value - Untrusted text to escape.
- * @returns HTML-safe text.
- */
-const escapeHtml = (value: string): string =>
-  value.replaceAll(/[&<>"']/gu, (character) => {
-    switch (character) {
-      case '"': {
-        return "&quot;";
-      }
-      case "&": {
-        return "&amp;";
-      }
-      case "'": {
-        return "&#39;";
-      }
-      case "<": {
-        return "&lt;";
-      }
-      case ">": {
-        return "&gt;";
-      }
-      default: {
-        return character;
-      }
-    }
-  });
-
-/**
- * Allow only HTTP(S) destinations and escape them for safe HTML attributes.
- * @param value - URL to validate and escape.
- * @returns An escaped HTTP(S) URL or `#` for unsupported schemes.
- */
-const escapeAttribute = (value: string): string => {
-  if (!/^https?:\/\//iu.test(value)) {
-    return "#";
-  }
-  return escapeHtml(value);
-};
-
-/**
- * Render announcement content as HTML, escaping text and validating links.
- * @param announcement - Verified announcement to render.
- * @returns Safe HTML email body.
- */
-export const renderHtml = (announcement: Announcement): string => {
-  const { message } = announcement;
-  const content = escapeHtml(message.content);
-  const embeds = message.embeds
-    .map((embed) => {
-      const fields = (embed.fields ?? [])
-        .map(
-          (field) =>
-            `<p><strong>${escapeHtml(field.name ?? "")}</strong> ${escapeHtml(field.value ?? "")}</p>`
-        )
-        .join("");
-      const links = [embed.url, embed.image?.url, embed.thumbnail?.url]
-        .filter((url): url is string => url !== undefined)
-        .map(
-          (url) =>
-            `<p><a href="${escapeAttribute(url)}">${escapeHtml(url)}</a></p>`
-        )
-        .join("");
-      return `<section><h2>${escapeHtml(embed.title ?? "")}</h2><p>${escapeHtml(embed.description ?? "")}</p>${fields}${links}</section>`;
-    })
-    .join("");
-  const attachments = message.attachments
-    .map(
-      (attachment) =>
-        `<li><a href="${escapeAttribute(attachment.url)}">${escapeHtml(attachment.filename)}</a></li>`
-    )
-    .join("");
-  return `<main><p><strong>${escapeHtml(message.author.username)}</strong> · ${escapeHtml(message.timestamp)}</p><p>${content}</p>${embeds}<ul>${attachments}</ul><p><a href="https://discord.com/channels/${announcement.sourceGuildId}/${announcement.sourceChannelId}/${announcement.sourceMessageId}">View announcement</a></p></main>`;
-};
-
-/**
- * Render announcement content as a plain-text email with readable sections.
- * @param announcement - Verified announcement to render.
- * @returns Plain-text email body.
- */
-export const renderText = (announcement: Announcement): string => {
-  const { message } = announcement;
-  const embeds = message.embeds
-    .map((embed) =>
-      [
-        embed.title,
-        embed.description,
-        ...(embed.fields ?? []).flatMap((field) => [field.name, field.value]),
-        embed.url,
-        embed.image?.url,
-        embed.thumbnail?.url,
-      ]
-        .filter(Boolean)
-        .join("\n")
-    )
-    .filter(Boolean)
-    .join("\n\n");
-  const attachments = message.attachments
-    .map((item) => `${item.filename}: ${item.url}`)
-    .join("\n");
-  return [
-    `${message.author.username} · ${message.timestamp}`,
-    message.content,
-    embeds,
-    attachments,
-    `View announcement: https://discord.com/channels/${announcement.sourceGuildId}/${announcement.sourceChannelId}/${announcement.sourceMessageId}`,
-  ]
-    .filter(Boolean)
-    .join("\n\n");
-};
+export { renderHtml, renderText } from "@/email-renderer";

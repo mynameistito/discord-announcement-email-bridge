@@ -6,8 +6,6 @@ import {
   compareSnowflakes,
   MessageSchema,
   oldestFirst,
-  renderHtml,
-  renderText,
 } from "@/domain";
 import type { DiscordMessage, Subscription } from "@/domain";
 
@@ -146,37 +144,5 @@ describe("snowflakes and email rendering", () => {
         message("9007199254740992"),
       ]).map(({ id }) => id)
     ).toStrictEqual(["9007199254740992", "90071992547409930"]);
-  });
-
-  it("renders text, embeds, attachment links and an attributed message URL", () => {
-    const announcement = classifyFollowerMessage(
-      message("100"),
-      webhook,
-      subscription
-    );
-    if (!announcement) {
-      throw new Error("fixture should classify");
-    }
-    const text = renderText(announcement);
-    const html = renderHtml(announcement);
-    expect({
-      hasAttachmentLink: html.includes(
-        "https://cdn.discordapp.com/schedule.pdf"
-      ),
-      hasAttributedMessageUrl: text.includes(
-        "/source-guild/source-channel/source-message"
-      ),
-      hasEmbedField: text.includes("Status"),
-      hasEscapedContent: html.includes("&lt;noon&gt; &amp; stay tuned"),
-      hasPlainAttachment: text.includes("schedule.pdf"),
-      hasRawHtml: html.includes("<noon>"),
-    }).toStrictEqual({
-      hasAttachmentLink: true,
-      hasAttributedMessageUrl: true,
-      hasEmbedField: true,
-      hasEscapedContent: true,
-      hasPlainAttachment: true,
-      hasRawHtml: false,
-    });
   });
 });

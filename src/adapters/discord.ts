@@ -11,7 +11,7 @@ import type { WorkerEnv } from "@/alchemy.run";
 import type { UnparsedDiscordMessage } from "@/application/polling";
 import { DiscordApiError } from "@/discord-api-error";
 import { WebhookSchema } from "@/domain";
-import type { FollowerWebhook } from "@/domain";
+import type { FollowerWebhook, SourceMetadata } from "@/domain";
 
 export type { FollowerWebhook } from "@/domain";
 
@@ -130,6 +130,56 @@ const webhook = (
   );
 
 /**
+ * Read original-source labels and build the official CDN guild-icon URL.
+ * @param env - Worker bindings containing the Discord bot token.
+ * @param guildId - Original guild identifier.
+ * @param channelId - Original channel identifier.
+ * @returns Source labels and optional CDN icon URL.
+ */
+const sourceMetadata = (
+  env: WorkerEnv,
+  guildId: string,
+  channelId: string
+): Effect.Effect<SourceMetadata, DiscordApiError> =>
+  Effect.all(
+    [
+      Services.discord.getChannel({ channel_id: channelId }),
+      Services.discord.getGuild({ guild_id: guildId }),
+    ],
+    { concurrency: 2 }
+  ).pipe(
+    Retry.none,
+    Effect.flatMap(([channel, guild]) =>
+      Effect.gen(function* decodeSourceMetadata() {
+        const channelData = yield* Schema.decodeUnknownEffect(
+          Schema.Struct({ name: Schema.String })
+        )(channel);
+        const guildData = yield* Schema.decodeUnknownEffect(
+          Schema.Struct({
+            icon: Schema.NullOr(Schema.String),
+            name: Schema.String,
+          })
+        )(guild);
+        const metadata = {
+          channelName: channelData.name,
+          guildName: guildData.name,
+        };
+        const iconHash = guildData.icon;
+        if (!iconHash) {
+          return metadata;
+        }
+        const extension = iconHash.startsWith("a_") ? "gif" : "png";
+        return {
+          ...metadata,
+          guildIconUrl: `https://cdn.discordapp.com/icons/${encodeURIComponent(guildId)}/${encodeURIComponent(iconHash)}.${extension}?size=128`,
+        };
+      })
+    ),
+    Effect.mapError(toDiscordApiError),
+    Effect.provide(discordLayer(env))
+  );
+
+/**
  * Create polling ports bound to the supplied Worker's bot credentials.
  * Returned methods expose page-based message reads and validated webhook reads.
  * @param env - Worker bindings containing the Discord bot token.
@@ -141,5 +191,7 @@ export const makeDiscordSource = (env: WorkerEnv) => ({
   fetchBefore: (channelId: string, before: string) =>
     messages(env, channelId, { before }),
   fetchLatest: (channelId: string) => messages(env, channelId, {}),
+  getSourceMetadata: (guildId: string, channelId: string) =>
+    sourceMetadata(env, guildId, channelId),
   getWebhook: (webhookId: string) => webhook(env, webhookId),
 });

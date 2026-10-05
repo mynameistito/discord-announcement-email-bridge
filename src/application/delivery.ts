@@ -5,11 +5,17 @@ import { sendEmail } from "@/adapters/resend";
 import type { WorkerEnv } from "@/alchemy.run";
 import { ApiError } from "@/application/delivery-error";
 import { BridgeInfrastructureError } from "@/bridge-infrastructure-error";
-import { MessageSchema, renderHtml, renderText } from "@/domain";
+import {
+  MessageSchema,
+  renderHtml,
+  renderText,
+  SourceMetadataSchema,
+} from "@/domain";
 import type { Announcement } from "@/domain";
 
 /** Decode the JSON payload stored with each durable announcement row. */
 const StoredMessageSchema = Schema.fromJsonString(MessageSchema);
+const StoredSourceMetadataSchema = Schema.fromJsonString(SourceMetadataSchema);
 
 /**
  * Build a bounded, newline-free email subject from announcement text.
@@ -68,7 +74,7 @@ export const deliver = (
     }
     const row = yield* d1(() =>
       env.DB.prepare(
-        "SELECT normalized_payload, source_guild_id, source_channel_id, source_message_id, follower_webhook_id, subscription_id FROM announcements WHERE id = ?"
+        "SELECT normalized_payload, source_metadata, source_guild_id, source_channel_id, source_message_id, follower_webhook_id, subscription_id FROM announcements WHERE id = ?"
       )
         .bind(announcementId)
         .first<AnnouncementRow>()
@@ -92,6 +98,11 @@ export const deliver = (
           )
       )
     );
+    const parsedMetadata = row.source_metadata
+      ? Schema.decodeUnknownOption(StoredSourceMetadataSchema)(
+          row.source_metadata
+        )
+      : undefined;
     const announcement: Announcement = {
       followerWebhookId: row.follower_webhook_id,
       message,
@@ -99,6 +110,9 @@ export const deliver = (
       sourceGuildId: row.source_guild_id,
       sourceMessageId: row.source_message_id,
       subscriptionId: row.subscription_id,
+      ...(parsedMetadata?._tag === "Some"
+        ? { sourceMetadata: parsedMetadata.value }
+        : undefined),
     };
     if (!env.EMAIL_FROM_NAME.trim() || !env.EMAIL_FROM_EMAIL.trim()) {
       return yield* Effect.fail(
@@ -153,6 +167,7 @@ interface DeliveryIdRow {
 /** D1 announcement fields required to reconstruct the email domain object. */
 interface AnnouncementRow {
   readonly normalized_payload: string;
+  readonly source_metadata: string | null;
   readonly source_guild_id: string;
   readonly source_channel_id: string;
   readonly source_message_id: string;

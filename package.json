@@ -20,7 +20,7 @@
   },
   "type": "module",
   "scripts": {
-    "typecheck": "tsc --noEmit && tsc --noEmit --project scripts/tsconfig.json",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "e2e": "bun scripts/e2e.ts",
     "knip": "knip",

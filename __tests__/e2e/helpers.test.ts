@@ -7,7 +7,7 @@ import {
 } from "@tests/e2e/config.ts";
 import { waitUntil } from "@tests/e2e/http.ts";
 import { photoAttachment } from "@tests/e2e/photo-fixture.ts";
-import { announcementContent } from "@tests/e2e/types.ts";
+import { announcementContent, simpleWebhookContent } from "@tests/e2e/types.ts";
 import { normalizedWorkerUrl } from "@tests/e2e/worker.ts";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -50,17 +50,30 @@ describe("E2E helpers", () => {
     );
   });
 
-  it("covers Discord Markdown in the announcement", () => {
+  it("covers the requested Discord formatting in the announcement", () => {
     const content = announcementContent("E2E marker");
     expect(
       [
-        "**E2E announcement**",
-        "*Testing Discord Markdown rendering.*",
-        "- First checklist item",
-        "`const e2e = true`",
-        "[Discord API](https://discord.com/developers/docs/intro)",
+        "# E2E UUID E2E marker",
+        "## Header 2",
+        "### Header 3",
+        "*Italics Text*",
+        "**Bold Text**",
+        "***Bold Italics Text***",
+        "__Underline Text__",
+        "~~Strikethrough Text~~",
+        "- First Checkpoint Item",
+        "- Second Checkpoint Item",
+        "Inline Code: `inline code`",
+        "[Hyperlink Text](https://discord.com/developers/docs/intro)",
+        '```pwsh\nWrite-Output "E2E PowerShell"\n```',
+        '```js\nconsole.log("E2E JavaScript");\n```',
+        "Image attachment below.",
       ].every((example) => content.includes(example))
     ).toBeTruthy();
+    expect(simpleWebhookContent("E2E marker")).toBe(
+      "Simple E2E webhook message E2E marker"
+    );
   });
 
   it("loads the committed JPEG used by the live Discord upload", async () => {

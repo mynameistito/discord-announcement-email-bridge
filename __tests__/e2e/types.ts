@@ -54,4 +54,12 @@ export interface WorkerStatus {
  * @returns Message content containing Markdown examples.
  */
 export const announcementContent = (marker: string): string =>
-  `**E2E announcement** ${marker}\n*Testing Discord Markdown rendering.*\n\n- First checklist item\n- Second checklist item\n\nInline code: \`const e2e = true\`\n[Discord API](https://discord.com/developers/docs/intro)`;
+  `# E2E UUID ${marker}\n\n## Header 2\n\n### Header 3\n\n*Italics Text*\n\n**Bold Text**\n\n***Bold Italics Text***\n\n__Underline Text__\n\n~~Strikethrough Text~~\n\n- First Checkpoint Item\n- Second Checkpoint Item\n\nInline Code: \`inline code\`\n\n[Hyperlink Text](https://discord.com/developers/docs/intro)\n\n\`\`\`pwsh\nWrite-Output "E2E PowerShell"\n\`\`\`\n\n\`\`\`js\nconsole.log("E2E JavaScript");\n\`\`\`\n\nImage attachment below.`;
+
+/**
+ * Build a plain E2E announcement for a separate follower-webhook delivery.
+ * @param marker - Unique text used to identify this test announcement.
+ * @returns Short message content without Markdown formatting.
+ */
+export const simpleWebhookContent = (marker: string): string =>
+  `Simple E2E webhook message ${marker}`;

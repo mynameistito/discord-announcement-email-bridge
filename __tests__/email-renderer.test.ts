@@ -130,6 +130,56 @@ describe("announcement email rendering", () => {
     ]).toStrictEqual(Array.from({ length: 12 }, () => true));
   });
 
+  it("renders rich embed authors, icons, colors, images, and footers", () => {
+    const imageUrl = "https://cdn.discordapp.com/attachments/e2e/photo.jpg";
+    const announcement = classified(
+      message({
+        attachments: [
+          { content_type: "image/jpeg", filename: "photo.jpg", url: imageUrl },
+        ],
+        embeds: [
+          {
+            author: {
+              icon_url: "https://cdn.discordapp.com/embed/avatars/0.png",
+              name: "E2E author",
+              url: "https://example.com/author",
+            },
+            color: 5_793_266,
+            description: "Embed details",
+            fields: [{ inline: true, name: "Status", value: "Ready" }],
+            footer: {
+              icon_url: "https://cdn.discordapp.com/embed/avatars/1.png",
+              text: "E2E footer",
+            },
+            image: { url: imageUrl },
+            thumbnail: {
+              url: "https://cdn.discordapp.com/embed/avatars/2.png",
+            },
+            timestamp: "2026-10-05T12:00:00.000Z",
+            title: "Rich embed",
+            url: "https://example.com/embed",
+          },
+        ],
+      })
+    );
+    const html = renderHtml(announcement);
+    const text = renderText(announcement);
+
+    expect([
+      html.includes("border-left:4px solid #5865f2"),
+      html.includes('href="https://example.com/author">E2E author</a>'),
+      html.includes('src="https://cdn.discordapp.com/embed/avatars/0.png"'),
+      html.includes('src="https://cdn.discordapp.com/embed/avatars/1.png"'),
+      html.includes('<a href="https://example.com/embed">Rich embed</a>'),
+      html.includes('src="https://cdn.discordapp.com/embed/avatars/2.png"'),
+      html.includes("E2E footer · 12:00 05/10/2026 UTC"),
+      html.includes(`src="${imageUrl}"`),
+      !html.includes('alt="photo.jpg"'),
+      text.includes("E2E author"),
+      text.includes("E2E footer"),
+    ]).toStrictEqual(Array.from({ length: 11 }, () => true));
+  });
+
   it("escapes malformed timestamps before inserting them into HTML", () => {
     const html = renderHtml(
       classified(message({ timestamp: '<img src=x onerror="alert(1)" />' }))

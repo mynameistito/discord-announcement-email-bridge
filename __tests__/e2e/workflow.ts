@@ -7,7 +7,11 @@ import {
 } from "@tests/e2e/discord.ts";
 import { startLocalDev, stopLocalDev } from "@tests/e2e/local-worker.ts";
 import { photoAttachment } from "@tests/e2e/photo-fixture.ts";
-import { announcementContent } from "@tests/e2e/types.ts";
+import {
+  announcementContent,
+  announcementEmbed,
+  simpleWebhookContent,
+} from "@tests/e2e/types.ts";
 import type { E2EOptions, LogTone } from "@tests/e2e/types.ts";
 import {
   pollBridge,
@@ -81,14 +85,15 @@ const runAnnouncement = (
     log("Seeding the bridge cursor before publishing the test post...");
     yield* attempt(() => seedCursor(workerUrl, config, signal));
 
-    const marker = `E2E ${crypto.randomUUID()}`;
+    const marker = crypto.randomUUID();
     const messageId = yield* attempt(() =>
       createAnnouncement(
         config,
         marker,
         announcementContent(marker),
         signal,
-        attachment
+        attachment,
+        [announcementEmbed(new Date().toISOString())]
       )
     );
     log(`Created test announcement ${messageId}.`, "success");
@@ -97,16 +102,40 @@ const runAnnouncement = (
         ? attachment.filename
         : (attachment.filename ?? attachment.path.split(/[\\/]/u).at(-1));
     const followerCopyId = yield* attempt(() =>
-      crosspostAnnouncement(config, messageId, signal, log, expectedFilename)
+      crosspostAnnouncement(
+        config,
+        messageId,
+        signal,
+        log,
+        expectedFilename,
+        "E2E rich embed"
+      )
     );
     log("Follower copy appeared in the receiver channel.", "success");
+    const simpleMarker = crypto.randomUUID();
+    const simpleMessageId = yield* attempt(() =>
+      createAnnouncement(
+        config,
+        simpleMarker,
+        simpleWebhookContent(simpleMarker),
+        signal
+      )
+    );
+    log(`Created simple test announcement ${simpleMessageId}.`, "success");
+    const simpleFollowerCopyId = yield* attempt(() =>
+      crosspostAnnouncement(config, simpleMessageId, signal, log)
+    );
+    log("Simple follower copy appeared in the receiver channel.", "success");
     log("Polling the bridge for the test crosspost...");
     yield* attempt(() => pollBridge(workerUrl, config, signal));
     yield* attempt(() =>
       waitForDelivery(workerUrl, config, followerCopyId, signal, log)
     );
+    yield* attempt(() =>
+      waitForDelivery(workerUrl, config, simpleFollowerCopyId, signal, log)
+    );
     log(
-      `E2E passed. Discord message ${messageId}; Worker recorded a successful Resend delivery.`,
+      `E2E passed. Discord messages ${messageId} and ${simpleMessageId}; Worker recorded successful Resend deliveries for both.`,
       "success"
     );
   });

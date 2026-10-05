@@ -37,6 +37,28 @@ export type AnnouncementAttachment =
       readonly filename?: string;
     };
 
+/** Rich Discord embed fields exercised by the live E2E announcement. */
+export interface E2EAnnouncementEmbed {
+  readonly author: {
+    readonly icon_url: string;
+    readonly name: string;
+    readonly url: string;
+  };
+  readonly color: number;
+  readonly description: string;
+  readonly fields: readonly {
+    readonly inline: boolean;
+    readonly name: string;
+    readonly value: string;
+  }[];
+  readonly footer: { readonly icon_url: string; readonly text: string };
+  readonly image: { readonly url: string };
+  readonly thumbnail: { readonly url: string };
+  readonly timestamp: string;
+  readonly title: string;
+  readonly url: string;
+}
+
 /** Tone used to color E2E progress output. */
 export type LogTone = "info" | "success" | "warning" | "failure";
 
@@ -54,4 +76,40 @@ export interface WorkerStatus {
  * @returns Message content containing Markdown examples.
  */
 export const announcementContent = (marker: string): string =>
-  `**E2E announcement** ${marker}\n*Testing Discord Markdown rendering.*\n\n- First checklist item\n- Second checklist item\n\nInline code: \`const e2e = true\`\n[Discord API](https://discord.com/developers/docs/intro)`;
+  `# E2E UUID ${marker}\n\n## Header 2\n\n### Header 3\n\n*Italics Text*\n\n**Bold Text**\n\n***Bold Italics Text***\n\n__Underline Text__\n\n~~Strikethrough Text~~\n\n- First Checkpoint Item\n- Second Checkpoint Item\n\nInline Code: \`inline code\`\n\n\`\`\`pwsh\nWrite-Output "E2E PowerShell"\n\`\`\`\n\n\`\`\`js\nconsole.log("E2E JavaScript");\n\`\`\`\n\nImage attachment below. The rich embed title links to the Discord API.`;
+
+/**
+ * Build a plain E2E announcement for a separate follower-webhook delivery.
+ * @param marker - Unique text used to identify this test announcement.
+ * @returns Short message content without Markdown formatting.
+ */
+export const simpleWebhookContent = (marker: string): string =>
+  `Simple E2E webhook message ${marker}`;
+
+/**
+ * Build a Discord embed that exercises author, icons, fields, images, and footer.
+ * @param timestamp - ISO timestamp included in the embed footer.
+ * @returns A rich embed attached to the live E2E announcement.
+ */
+export const announcementEmbed = (timestamp: string): E2EAnnouncementEmbed => ({
+  author: {
+    icon_url: "https://cdn.discordapp.com/embed/avatars/0.png",
+    name: "E2E announcement author",
+    url: "https://discord.com/developers/docs/intro",
+  },
+  color: 5_793_266,
+  description: "Rich embed content for the Discord-to-email E2E test.",
+  fields: [
+    { inline: true, name: "Status", value: "All systems ready" },
+    { inline: true, name: "Scenario", value: "Announcement crosspost" },
+  ],
+  footer: {
+    icon_url: "https://cdn.discordapp.com/embed/avatars/1.png",
+    text: "E2E webhook embed",
+  },
+  image: { url: "attachment://e2e-photo.jpg" },
+  thumbnail: { url: "https://cdn.discordapp.com/embed/avatars/2.png" },
+  timestamp,
+  title: "E2E rich embed",
+  url: "https://discord.com/developers/docs/intro",
+});

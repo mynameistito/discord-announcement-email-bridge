@@ -3,11 +3,13 @@ import { readFile } from "node:fs/promises";
 import { discordApi, jsonRequest, waitUntil } from "@tests/e2e/http.ts";
 import type {
   AnnouncementAttachment,
+  E2EAnnouncementEmbed,
   E2EConfig,
   LogTone,
 } from "@tests/e2e/types.ts";
 
 type Log = (message: string, tone?: LogTone) => void;
+
 interface DiscordChannel {
   readonly guild_id: string;
   readonly type: number;
@@ -21,6 +23,20 @@ interface DiscordMessage {
   readonly id?: string;
   readonly message_reference?: { readonly message_id?: string } | null;
   readonly attachments?: readonly { readonly filename: string }[];
+  readonly embeds?: readonly {
+    readonly author?: {
+      readonly icon_url?: string;
+      readonly name?: string;
+    } | null;
+    readonly fields?: readonly { readonly name?: string }[];
+    readonly footer?: {
+      readonly icon_url?: string;
+      readonly text?: string;
+    } | null;
+    readonly image?: { readonly url?: string } | null;
+    readonly thumbnail?: { readonly url?: string } | null;
+    readonly title?: string;
+  }[];
 }
 
 const headers = (token: string) => ({
@@ -112,7 +128,8 @@ export const createAnnouncement = async (
   marker: string,
   content: string,
   signal: AbortSignal,
-  attachment?: AnnouncementAttachment
+  attachment?: AnnouncementAttachment,
+  embeds?: readonly E2EAnnouncementEmbed[]
 ): Promise<string> => {
   const url = `${discordApi}/channels/${config.sourceChannelId}/messages`;
   const authorization = headers(config.token);
@@ -129,14 +146,14 @@ export const createAnnouncement = async (
           attachment.path.split(/[\\/]/u).at(-1) ??
           "fixture.bin");
     const form = new FormData();
-    form.set("payload_json", JSON.stringify({ content }));
+    form.set("payload_json", JSON.stringify({ content, embeds }));
     const blobBytes = new Uint8Array(bytes.byteLength);
     blobBytes.set(bytes);
     form.set("files[0]", new Blob([blobBytes.buffer]), filename);
     init = { body: form, headers: authorization, method: "POST" };
   } else {
     init = {
-      body: JSON.stringify({ content }),
+      body: JSON.stringify({ content, embeds }),
       headers: { ...authorization, "Content-Type": "application/json" },
       method: "POST",
     };
@@ -155,6 +172,26 @@ export const createAnnouncement = async (
   return created.id;
 };
 
+const preservesRichEmbed = (
+  message: DiscordMessage,
+  expectedTitle: string
+): boolean => {
+  const embed = message.embeds?.find((item) => item.title === expectedTitle);
+  if (!embed?.author?.name || !embed.author.icon_url) {
+    return false;
+  }
+  if (!embed.fields?.some((field) => field.name === "Status")) {
+    return false;
+  }
+  if (!embed.footer?.text || !embed.footer.icon_url) {
+    return false;
+  }
+  if (!embed.image?.url?.startsWith("https://")) {
+    return false;
+  }
+  return Boolean(embed.thumbnail?.url?.startsWith("https://"));
+};
+
 /**
  * Crosspost the announcement and wait for its follower-channel copy.
  * @param config - E2E Discord credentials and channel IDs.
@@ -169,7 +206,8 @@ export const crosspostAnnouncement = async (
   messageId: string,
   signal: AbortSignal,
   log: Log,
-  expectedFilename?: string
+  expectedFilename?: string,
+  expectedEmbedTitle?: string
 ): Promise<string> => {
   await jsonRequest<DiscordMessage>(
     `${discordApi}/channels/${config.sourceChannelId}/messages/${messageId}/crosspost`,
@@ -205,6 +243,11 @@ export const crosspostAnnouncement = async (
   ) {
     throw new Error(
       `Discord follower copy did not include attachment ${expectedFilename}`
+    );
+  }
+  if (expectedEmbedTitle && !preservesRichEmbed(copy, expectedEmbedTitle)) {
+    throw new Error(
+      `Discord follower copy did not preserve the rich embed fields for ${expectedEmbedTitle}`
     );
   }
   return copy.id;

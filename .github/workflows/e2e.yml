@@ -37,8 +37,8 @@ jobs:
           EMAIL_FROM_NAME: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/EMAIL_FROM_NAME
           EMAIL_FROM_EMAIL: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/EMAIL_FROM_EMAIL
           ADMIN_PREVIEW_TOKEN: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/ADMIN_PREVIEW_TOKEN
-          CF_ACCESS_CLIENT_ID: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/CF_ACCESS_CLIENT_ID
-          CF_ACCESS_CLIENT_SECRET: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/CF_ACCESS_CLIENT_SECRET
+          CF_ACCESS_CLIENT_ID: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/add more/CF_ACCESS_CLIENT_ID
+          CF_ACCESS_CLIENT_SECRET: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/add more/CF_ACCESS_CLIENT_SECRET
 
       - run: bun install --frozen-lockfile
 

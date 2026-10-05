@@ -94,6 +94,7 @@ jobs:
 
       - name: Publish E2E summary
         if: ${{ always() }}
+        continue-on-error: true
         env:
           JOB_STATUS: ${{ job.status }}
           OP_OUTCOME: ${{ steps.op_e2e.outcome }}

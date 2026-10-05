@@ -116,13 +116,21 @@ jobs:
             esac
           }
 
-          if [ "$JOB_STATUS" = "success" ] && [ "$E2E_OUTCOME" = "success" ]; then
+          if [ "$E2E_OUTCOME" = "success" ]; then
             echo "## ✅ Discord E2E passed" >> "$GITHUB_STEP_SUMMARY"
-            echo "The complete Discord → Worker → Resend flow completed successfully." >> "$GITHUB_STEP_SUMMARY"
-          else
+            if [ "$JOB_STATUS" = "success" ]; then
+              echo "The complete Discord → Worker → Resend flow completed successfully." >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "The Discord → Worker → Resend flow passed, but another lifecycle step failed." >> "$GITHUB_STEP_SUMMARY"
+            fi
+          elif [ "$E2E_OUTCOME" = "failure" ]; then
             echo "## ❌ Discord E2E failed" >> "$GITHUB_STEP_SUMMARY"
             echo "Review the failed lifecycle step and its detailed log output." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "## ⚠️ Discord E2E did not complete" >> "$GITHUB_STEP_SUMMARY"
+            echo "Review the lifecycle outcomes and detailed log output." >> "$GITHUB_STEP_SUMMARY"
           fi
+          printf '\n**Workflow status:** `%s`\n' "$JOB_STATUS" >> "$GITHUB_STEP_SUMMARY"
 
           {
             echo

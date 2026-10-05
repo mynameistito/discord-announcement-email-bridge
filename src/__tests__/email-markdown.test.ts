@@ -17,16 +17,17 @@ describe("email Markdown rendering", () => {
     const html = renderEmailMarkdown(
       "<img src=x onerror=alert(1)> `**literal**`\n````html\n```\n<b>**literal**</b>\n````"
     );
+    const fencedBlock = /<pre><code>([\s\S]*?)<\/code><\/pre>/u.exec(html)?.[1];
     expect({
       escapedCode: html.includes("&lt;b&gt;**literal**&lt;/b&gt;"),
       escapedHtml: html.includes("&lt;img src=x onerror=alert(1)&gt;"),
+      fencedBlock,
       inlineCode: html.includes("<code>**literal**</code>"),
-      shortFenceRetained: html.includes("```"),
     }).toStrictEqual({
       escapedCode: true,
       escapedHtml: true,
+      fencedBlock: "```\n&lt;b&gt;**literal**&lt;/b&gt;",
       inlineCode: true,
-      shortFenceRetained: true,
     });
   });
 
@@ -45,6 +46,14 @@ describe("email Markdown rendering", () => {
       )
     ).toBe(
       "<p>[bad](javascript:alert(1)) ||hidden **text**|| &lt;@123456&gt; [also bad](data:text/html,x)</p>"
+    );
+  });
+
+  it("renders balanced link destinations and triple-star formatting", () => {
+    expect(
+      renderEmailMarkdown("[page](https://example.com/a_(b)) ***bold italic***")
+    ).toBe(
+      '<p><a href="https://example.com/a_(b)">page</a> <strong><em>bold italic</em></strong></p>'
     );
   });
 

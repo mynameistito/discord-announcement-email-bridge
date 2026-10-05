@@ -45,6 +45,21 @@ const closingIndex = (source: string, delimiter: string, start: number) => {
   return index > start ? index : -1;
 };
 
+const linkDestinationEnd = (source: string, start: number): number => {
+  let depth = 0;
+  for (let index = start; index < source.length; index += 1) {
+    if (source[index] === "(") {
+      depth += 1;
+    } else if (source[index] === ")") {
+      if (depth === 0) {
+        return index;
+      }
+      depth -= 1;
+    }
+  }
+  return -1;
+};
+
 interface InlineToken {
   readonly html: string;
   readonly next: number;
@@ -72,7 +87,8 @@ const inlineLink = (
     return undefined;
   }
   const labelEnd = source.indexOf("](", index + 1);
-  const urlEnd = labelEnd === -1 ? -1 : source.indexOf(")", labelEnd + 2);
+  const urlEnd =
+    labelEnd === -1 ? -1 : linkDestinationEnd(source, labelEnd + 2);
   if (labelEnd <= index + 1 || urlEnd <= labelEnd + 2) {
     return undefined;
   }
@@ -111,6 +127,16 @@ const inlineFormatting = (
   index: number,
   renderNested: (source: string) => string
 ): InlineToken | undefined => {
+  if (source.startsWith("***", index)) {
+    const end = closingIndex(source, "***", index + 3);
+    if (end >= 0) {
+      const content = renderNested(source.slice(index + 3, end));
+      return {
+        html: `<strong><em>${content}</em></strong>`,
+        next: end + 3,
+      };
+    }
+  }
   for (const [delimiter, tag] of formatting) {
     if (!source.startsWith(delimiter, index)) {
       continue;

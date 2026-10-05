@@ -168,4 +168,20 @@ describe("D1 delivery repository", () => {
       delivery.status,
     ]).toStrictEqual([true, "complete", false, false, true, "failed"]);
   });
+
+  it("dead-letters a queued delivery without an active claim token", async () => {
+    const [delivery] = fixture.deliveries;
+    if (!delivery) {
+      throw new Error("Expected seeded dead-letter delivery");
+    }
+    delivery.status = "queued";
+    delivery.claimToken = null;
+    delivery.expired = false;
+
+    const marked = await Effect.runPromise(
+      markDeadLetter(fixture.env, delivery.id, delivery.generation)
+    );
+
+    expect([marked, delivery.status]).toStrictEqual([true, "failed"]);
+  });
 });

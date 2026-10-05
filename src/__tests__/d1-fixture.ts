@@ -107,7 +107,7 @@ export const makeD1Fixture = (): D1Fixture => {
                 row.id === id &&
                 row.generation === generation &&
                 row.status === "queued" &&
-                row.expired
+                (row.claimToken === null || row.expired)
             );
             if (!delivery) {
               return Promise.resolve(d1Result([], 0));

@@ -4,7 +4,7 @@ import {
   Retry,
   Services,
 } from "@distilled.cloud/resend";
-import { Effect, Layer, Schema } from "effect";
+import { Effect, Layer, Redacted, Schema } from "effect";
 import { layer as fetchLayer } from "effect/http/FetchHttpClient";
 import { HttpClient, mapRequest } from "effect/http/HttpClient";
 import { setHeader } from "effect/http/HttpClientRequest";
@@ -109,7 +109,7 @@ const resendLayer = (
   idempotencyKey: string
 ) =>
   Layer.mergeAll(
-    fromApiKey({ apiKey: env.RESEND_API_KEY }),
+    fromApiKey({ apiKey: Redacted.make(env.RESEND_API_KEY) }),
     ResendProtocol,
     idempotencyHttpClientLayer(idempotencyKey)
   );

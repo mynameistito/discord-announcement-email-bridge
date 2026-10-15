@@ -4,7 +4,7 @@ import {
   Retry,
   Services,
 } from "@distilled.cloud/discord";
-import { Effect, Layer, Schema } from "effect";
+import { Effect, Layer, Redacted, Schema } from "effect";
 import { layer as fetchLayer } from "effect/http/FetchHttpClient";
 
 import type { WorkerEnv } from "@/alchemy.run";
@@ -68,7 +68,10 @@ const toDiscordApiError = (cause: unknown): DiscordApiError => {
 const discordLayer = (env: WorkerEnv) =>
   Layer.mergeAll(
     fetchLayer,
-    credentials({ token: env.DISCORD_BOT_TOKEN, tokenType: "Bot" }),
+    credentials({
+      token: Redacted.make(env.DISCORD_BOT_TOKEN),
+      tokenType: "Bot",
+    }),
     DiscordProtocol
   );
 

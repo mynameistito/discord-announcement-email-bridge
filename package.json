@@ -33,18 +33,19 @@
     "prepare": "lefthook install"
   },
   "dependencies": {
+    "@alchemy.run/cloudflare": "2.0.0-beta.84",
     "@distilled.cloud/discord": "1.0.0-rc.15",
     "@distilled.cloud/resend": "1.0.0-rc.15",
-    "alchemy": "2.0.0-beta.83",
-    "effect": "4.0.4"
+    "alchemy": "2.0.0-beta.84",
+    "effect": "4.0.6"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "5.20261014.1",
-    "@effect/platform-bun": "4.0.4",
-    "@effect/platform-node": "4.0.4",
+    "@cloudflare/workers-types": "5.20261026.1",
+    "@effect/platform-bun": "4.0.6",
+    "@effect/platform-node": "4.0.6",
     "@types/node": "^26.6.5",
     "@typescript/native": "npm:typescript@^7.0.2",
-    "@vitest/coverage-v8": "5.0.4",
+    "@vitest/coverage-v8": "5.0.5",
     "eslint-plugin-github": "6.1.2",
     "eslint-plugin-jsdoc": "^65.3.4",
     "eslint-plugin-sonarjs": "^4.2.2",
@@ -55,7 +56,7 @@
     "oxlint": "^1.88.0",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "ultracite": "7.12.4",
-    "vitest": "5.0.4"
+    "vitest": "5.0.5"
   },
   "packageManager": "bun@1.4.2"
 }

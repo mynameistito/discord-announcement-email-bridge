@@ -1,6 +1,6 @@
+import { D1, Queues, Worker, providers, state } from "@alchemy.run/cloudflare";
+import type { InferEnv } from "@alchemy.run/cloudflare";
 import { Stack } from "alchemy";
-import { D1, Queues, Worker, providers, state } from "alchemy/Cloudflare";
-import type { InferEnv } from "alchemy/Cloudflare";
 import { Redacted, String as StringConfig, withDefault } from "effect/Config";
 import { gen, map } from "effect/Effect";
 

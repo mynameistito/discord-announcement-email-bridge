@@ -1,4 +1,4 @@
-import { Queues } from "alchemy/Cloudflare";
+import { Queues } from "@alchemy.run/cloudflare";
 
 /** Provision the asynchronous queue carrying durable email delivery IDs. */
 export const DeliveryQueue = Queues.Queue("DeliveryQueue");

@@ -29,16 +29,16 @@ jobs:
           version: 2.34.1
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-          CLOUDFLARE_API_TOKEN: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/CLOUDFLARE_API_TOKEN
-          CLOUDFLARE_ACCOUNT_ID: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/CLOUDFLARE_ACCOUNT_ID
-          DISCORD_BOT_TOKEN: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/DISCORD_BOT_TOKEN
-          DISCORD_GUILD_ID: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/DISCORD_GUILD_ID
-          DISCORD_TARGET_CHANNEL_ID: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/DISCORD_TARGET_CHANNEL_ID
-          EMAIL_TO: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/EMAIL_TO
-          RESEND_API_KEY: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/RESEND_API_KEY
-          EMAIL_FROM_NAME: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/EMAIL_FROM_NAME
-          EMAIL_FROM_EMAIL: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/EMAIL_FROM_EMAIL
-          ADMIN_TOKEN: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/ADMIN_TOKEN
+          CLOUDFLARE_API_TOKEN: op://github-actions/tysah2ocypwthyvnjhfotdjt6u/add more/CLOUDFLARE_API_TOKEN
+          CLOUDFLARE_ACCOUNT_ID: op://github-actions/tysah2ocypwthyvnjhfotdjt6u/add more/CLOUDFLARE_ACCOUNT_ID
+          DISCORD_BOT_TOKEN: op://github-actions/tysah2ocypwthyvnjhfotdjt6u/add more/DISCORD_BOT_TOKEN
+          DISCORD_GUILD_ID: op://github-actions/tysah2ocypwthyvnjhfotdjt6u/add more/DISCORD_GUILD_ID
+          DISCORD_TARGET_CHANNEL_ID: op://github-actions/tysah2ocypwthyvnjhfotdjt6u/add more/DISCORD_TARGET_CHANNEL_ID
+          EMAIL_TO: op://github-actions/tysah2ocypwthyvnjhfotdjt6u/add more/EMAIL_TO
+          RESEND_API_KEY: op://github-actions/tysah2ocypwthyvnjhfotdjt6u/add more/RESEND_API_KEY
+          EMAIL_FROM_NAME: op://github-actions/tysah2ocypwthyvnjhfotdjt6u/add more/EMAIL_FROM_NAME
+          EMAIL_FROM_EMAIL: op://github-actions/tysah2ocypwthyvnjhfotdjt6u/add more/EMAIL_FROM_EMAIL
+          ADMIN_TOKEN: op://github-actions/tysah2ocypwthyvnjhfotdjt6u/add more/ADMIN_TOKEN
 
       - name: Load preview credentials from 1Password
         id: op_preview
@@ -48,8 +48,8 @@ jobs:
           version: 2.34.1
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-          CLOUDFLARE_API_TOKEN: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/CLOUDFLARE_API_TOKEN
-          CLOUDFLARE_ACCOUNT_ID: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/CLOUDFLARE_ACCOUNT_ID
+          CLOUDFLARE_API_TOKEN: op://github-actions/tysah2ocypwthyvnjhfotdjt6u/add more/CLOUDFLARE_API_TOKEN
+          CLOUDFLARE_ACCOUNT_ID: op://github-actions/tysah2ocypwthyvnjhfotdjt6u/add more/CLOUDFLARE_ACCOUNT_ID
 
       - name: Load preview cleanup credentials from 1Password
         id: op_cleanup
@@ -59,8 +59,8 @@ jobs:
           version: 2.34.1
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-          CLOUDFLARE_API_TOKEN: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/CLOUDFLARE_API_TOKEN
-          CLOUDFLARE_ACCOUNT_ID: op://github-actions/jzwlhhnq7fhnsoazz2esnl4xt4/CLOUDFLARE_ACCOUNT_ID
+          CLOUDFLARE_API_TOKEN: op://github-actions/tysah2ocypwthyvnjhfotdjt6u/add more/CLOUDFLARE_API_TOKEN
+          CLOUDFLARE_ACCOUNT_ID: op://github-actions/tysah2ocypwthyvnjhfotdjt6u/add more/CLOUDFLARE_ACCOUNT_ID
 
       - name: Run Alchemy deployment
         uses: mynameistito/alchemy-deploy@4e29a36d61cf8cc4277bdcd35d7b3eff13150b38 # v3.2.0

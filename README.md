@@ -20,7 +20,7 @@ The Worker polls once a minute in production. It only sends mail for crossposts 
 
 ### Requirements
 
-- [Bun 1.4.2](https://bun.sh/)
+- [Bun 1.4.4](https://bun.sh/)
 - A Cloudflare account with Workers, D1, and Queues
 - A Discord bot with the permissions and privileged intent described in the [configuration guide](docs/configuration.md)
 - A Resend account with a verified sender domain

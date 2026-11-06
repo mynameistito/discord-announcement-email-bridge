@@ -26,19 +26,19 @@ jobs:
           version: 2.34.1
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-          CLOUDFLARE_PREVIEW_API_TOKEN: op://github-actions/tysah2ocypwthyvnjhfotdjt6u/add more/CLOUDFLARE_PREVIEW_API_TOKEN
-          CLOUDFLARE_PREVIEW_ACCOUNT_ID: op://github-actions/tysah2ocypwthyvnjhfotdjt6u/add more/CLOUDFLARE_PREVIEW_ACCOUNT_ID
-          DISCORD_PREVIEW_BOT_TOKEN: op://github-actions/tysah2ocypwthyvnjhfotdjt6u/add more/DISCORD_PREVIEW_BOT_TOKEN
-          DISCORD_GUILD_ID: op://github-actions/tysah2ocypwthyvnjhfotdjt6u/add more/DISCORD_GUILD_ID
-          DISCORD_E2E_ANNOUNCEMENT_CHANNEL_ID: op://github-actions/tysah2ocypwthyvnjhfotdjt6u/j7kkoyn3d4oth4yciqni7qyhui
-          DISCORD_E2E_RECEIVER_CHANNEL_ID: op://github-actions/tysah2ocypwthyvnjhfotdjt6u/5dfywo6mrp2mfags4dxmsj4ale
-          EMAIL_TO: op://github-actions/tysah2ocypwthyvnjhfotdjt6u/add more/EMAIL_TO
-          RESEND_PREVIEW_API_KEY: op://github-actions/tysah2ocypwthyvnjhfotdjt6u/2dz4hpmhrtykmb3yaawfh5gemu
-          EMAIL_FROM_NAME: op://github-actions/tysah2ocypwthyvnjhfotdjt6u/add more/EMAIL_FROM_NAME
-          EMAIL_FROM_EMAIL: op://github-actions/tysah2ocypwthyvnjhfotdjt6u/add more/EMAIL_FROM_EMAIL
-          ADMIN_PREVIEW_TOKEN: op://github-actions/tysah2ocypwthyvnjhfotdjt6u/add more/ADMIN_PREVIEW_TOKEN
-          CF_ACCESS_CLIENT_ID: op://github-actions/tysah2ocypwthyvnjhfotdjt6u/add more/CF_ACCESS_CLIENT_ID
-          CF_ACCESS_CLIENT_SECRET: op://github-actions/tysah2ocypwthyvnjhfotdjt6u/add more/CF_ACCESS_CLIENT_SECRET
+          CLOUDFLARE_PREVIEW_API_TOKEN: op://i56qshgciuy4cdg4pjrilaeriy/huou7uzehzinkmpm3le3gfimme/ynusvijqjrycp5dkiyxma725sm
+          CLOUDFLARE_PREVIEW_ACCOUNT_ID: op://i56qshgciuy4cdg4pjrilaeriy/huou7uzehzinkmpm3le3gfimme/jcpasxrfy5xau45vzcbe4toggu
+          DISCORD_PREVIEW_BOT_TOKEN: op://i56qshgciuy4cdg4pjrilaeriy/huou7uzehzinkmpm3le3gfimme/bvjmz2zqmz5kciw5a6vcovqjgu
+          DISCORD_GUILD_ID: op://i56qshgciuy4cdg4pjrilaeriy/huou7uzehzinkmpm3le3gfimme/ksw5s6oa5cdjd2zgj4hv6pnzjq
+          DISCORD_E2E_ANNOUNCEMENT_CHANNEL_ID: op://i56qshgciuy4cdg4pjrilaeriy/huou7uzehzinkmpm3le3gfimme/j7kkoyn3d4oth4yciqni7qyhui
+          DISCORD_E2E_RECEIVER_CHANNEL_ID: op://i56qshgciuy4cdg4pjrilaeriy/huou7uzehzinkmpm3le3gfimme/5dfywo6mrp2mfags4dxmsj4ale
+          EMAIL_TO: op://i56qshgciuy4cdg4pjrilaeriy/huou7uzehzinkmpm3le3gfimme/yzl63k2lbake4onxejnbgwv3re
+          RESEND_PREVIEW_API_KEY: op://i56qshgciuy4cdg4pjrilaeriy/huou7uzehzinkmpm3le3gfimme/2dz4hpmhrtykmb3yaawfh5gemu
+          EMAIL_FROM_NAME: op://i56qshgciuy4cdg4pjrilaeriy/huou7uzehzinkmpm3le3gfimme/rlylwe6lukzgenapthsykqsr2a
+          EMAIL_FROM_EMAIL: op://i56qshgciuy4cdg4pjrilaeriy/huou7uzehzinkmpm3le3gfimme/ov4be76yq67mlf4zrxnwabwiom
+          ADMIN_PREVIEW_TOKEN: op://i56qshgciuy4cdg4pjrilaeriy/huou7uzehzinkmpm3le3gfimme/bbf3rr6cu7q6qr2re7pyfjxg6e
+          CF_ACCESS_CLIENT_ID: op://i56qshgciuy4cdg4pjrilaeriy/huou7uzehzinkmpm3le3gfimme/sqy7q34j3e7p4iqbsg7xc7rocu
+          CF_ACCESS_CLIENT_SECRET: op://i56qshgciuy4cdg4pjrilaeriy/huou7uzehzinkmpm3le3gfimme/x52u6d5gqivvdnrmofs6n5sybe
 
       - id: install
         run: bun install --frozen-lockfile

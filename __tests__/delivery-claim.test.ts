@@ -40,6 +40,7 @@ const makeQueueOperations = (
     Effect.gen(function* claimDelivery() {
       counters.claims += 1;
       let claim: "claimed" | "complete" | "in_flight";
+
       if (counters.status === "sent") {
         claim = "complete";
       } else if (counters.status === "sending") {
@@ -47,12 +48,15 @@ const makeQueueOperations = (
       } else {
         claim = "claimed";
       }
+
       if (claim === "claimed") {
         counters.status = "sending";
       }
+
       if (counters.claims === 2) {
         yield* Deferred.succeed(bothClaims, true);
       }
+
       return claim;
     }),
   delivery: () =>
@@ -73,10 +77,7 @@ const makeQueueOperations = (
  * @param retry - Callback invoked when the message is retried.
  * @returns A Cloudflare queue message for the test batch.
  */
-const queueMessage = (
-  acknowledge: () => void,
-  retry: () => void
-): Message<unknown> => ({
+const queueMessage = (acknowledge: () => void, retry: () => void): Message => ({
   ack: acknowledge,
   attempts: 1,
   body: payload,
@@ -92,9 +93,9 @@ const queueMessage = (
  * @returns A Cloudflare queue batch for tests.
  */
 const queueBatch = (
-  messages: readonly Message<unknown>[],
+  messages: readonly Message[],
   counters: DeliveryCounters
-): MessageBatch<unknown> => ({
+): MessageBatch => ({
   ackAll: () => {
     counters.acknowledgements += 1;
   },
@@ -111,6 +112,7 @@ describe("delivery claim", () => {
     const started = await Effect.runPromise(Deferred.make<boolean>());
     const release = await Effect.runPromise(Deferred.make<boolean>());
     const bothClaims = await Effect.runPromise(Deferred.make<boolean>());
+
     const counters: DeliveryCounters = {
       acknowledgements: 0,
       claims: 0,
@@ -118,11 +120,13 @@ describe("delivery claim", () => {
       sends: 0,
       status: "queued",
     };
+
     const operations: QueueOperations = {
       ...makeQueueOperations(started, release, bothClaims, counters),
       failDeadLetter: () => Effect.fail(new Error("database unavailable")),
     };
-    const batch: MessageBatch<unknown> = {
+
+    const batch: MessageBatch = {
       ...queueBatch(
         [
           queueMessage(
@@ -149,6 +153,7 @@ describe("delivery claim", () => {
     const started = await Effect.runPromise(Deferred.make<boolean>());
     const release = await Effect.runPromise(Deferred.make<boolean>());
     const bothClaims = await Effect.runPromise(Deferred.make<boolean>());
+
     const counters: DeliveryCounters = {
       acknowledgements: 0,
       claims: 0,
@@ -156,12 +161,14 @@ describe("delivery claim", () => {
       sends: 0,
       status: "queued",
     };
+
     const operations = makeQueueOperations(
       started,
       release,
       bothClaims,
       counters
     );
+
     const batch = queueBatch(
       [
         queueMessage(
@@ -201,6 +208,7 @@ describe("delivery claim", () => {
     const started = await Effect.runPromise(Deferred.make<boolean>());
     const release = await Effect.runPromise(Deferred.make<boolean>());
     const bothClaims = await Effect.runPromise(Deferred.make<boolean>());
+
     const counters: DeliveryCounters = {
       acknowledgements: 0,
       claims: 0,
@@ -208,12 +216,14 @@ describe("delivery claim", () => {
       sends: 0,
       status: "sending",
     };
+
     const operations = makeQueueOperations(
       started,
       release,
       bothClaims,
       counters
     );
+
     const makeBatch = () =>
       queueBatch(
         [

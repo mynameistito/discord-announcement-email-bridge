@@ -6,7 +6,7 @@
 
 ## OVERVIEW
 
-Bun 1.4.2, TypeScript, Effect 4, and Alchemy power a Cloudflare Worker that polls Discord follower channels, verifies announcement crossposts, persists discoveries in D1, and delivers mail through Queues and Resend.
+Bun 1.4.4, TypeScript, Effect 4, and Alchemy power a Cloudflare Worker that polls Discord follower channels, verifies announcement crossposts, persists discoveries in D1, and delivers mail through Queues and Resend.
 
 ## STRUCTURE
 

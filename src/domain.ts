@@ -165,12 +165,18 @@ const matchesFollowerWebhook = (
   webhook: FollowerWebhook | null,
   reference: NonNullable<DiscordMessage["message_reference"]>
 ): boolean => {
-  if (!message.webhook_id || webhook?.id !== message.webhook_id) {
+  if (
+    message.webhook_id === undefined ||
+    message.webhook_id === "" ||
+    webhook?.id !== message.webhook_id
+  ) {
     return false;
   }
+
   if (webhook.type !== 2 || webhook.source_guild?.id !== reference.guild_id) {
     return false;
   }
+
   return webhook.source_channel?.id === reference.channel_id;
 };
 
@@ -189,12 +195,14 @@ const matchesSubscription = (
   if (message.channel_id !== subscription.destinationChannelId) {
     return false;
   }
+
   if (
     subscription.sourceGuildId !== undefined &&
     reference.guild_id !== subscription.sourceGuildId
   ) {
     return false;
   }
+
   return (
     subscription.sourceChannelId === undefined ||
     reference.channel_id === subscription.sourceChannelId
@@ -216,17 +224,23 @@ export const classifyFollowerMessage = (
 ): Announcement | undefined => {
   const reference = message.message_reference;
   const isCrosspost = hasCrosspostFlag(message.flags ?? 0);
+
+  if (message.webhook_id === undefined || message.webhook_id === "") {
+    return undefined;
+  }
+
   if (
     !isCrosspost ||
     !reference ||
-    !message.webhook_id ||
     !matchesFollowerWebhook(message, webhook, reference)
   ) {
     return undefined;
   }
+
   if (!matchesSubscription(message, subscription, reference)) {
     return undefined;
   }
+
   return {
     followerWebhookId: message.webhook_id,
     message,
@@ -246,12 +260,15 @@ export const classifyFollowerMessage = (
 export const compareSnowflakes = (left: string, right: string): number => {
   const a = BigInt(left);
   const b = BigInt(right);
+
   if (a < b) {
     return -1;
   }
+
   if (a > b) {
     return 1;
   }
+
   return 0;
 };
 

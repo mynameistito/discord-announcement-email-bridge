@@ -16,9 +16,11 @@ describe("announcement discovery integration", () => {
     const newestPage = Array.from({ length: 100 }, (_, index) =>
       crosspost(String(200 - index))
     );
+
     const olderPage = Array.from({ length: 100 }, (_, index) =>
       crosspost(String(100 - index))
     );
+
     const fake = fakePorts([newestPage, olderPage], "0");
     await Effect.runPromise(
       pollAll.pipe(Effect.provide(pollingServiceLayer(fake.ports)))
@@ -61,8 +63,10 @@ describe("announcement discovery integration", () => {
       content: "",
       embeds: [],
     };
+
     const fake = fakePorts([[contentless, crosspost("102")]]);
     const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+
     try {
       await Effect.runPromise(
         pollAll.pipe(Effect.provide(pollingServiceLayer(fake.ports)))
@@ -85,6 +89,7 @@ describe("announcement discovery integration", () => {
     const newestPage = Array.from({ length: 100 }, (_, index) =>
       crosspost(String(200 - index))
     );
+
     const malformedOldMessage = { ...crosspost("99"), content: 1 };
     const fake = fakePorts([newestPage, [malformedOldMessage]]);
     await Effect.runPromise(
@@ -100,8 +105,10 @@ describe("announcement discovery integration", () => {
       destinationChannelId: "other-channel",
       id: "other-subscription",
     };
+
     const fake = fakePorts([]);
     const persisted: string[] = [];
+
     const ports: PollingPorts = {
       ...fake.ports,
       repository: {
@@ -126,6 +133,7 @@ describe("announcement discovery integration", () => {
               ]),
       },
     };
+
     await expect(
       Effect.runPromise(
         pollAll.pipe(Effect.provide(pollingServiceLayer(ports)))
@@ -150,6 +158,7 @@ describe("announcement discovery integration", () => {
 
   it("initializes from the latest existing message without emailing history", async () => {
     const fake = fakePorts([[crosspost("200"), crosspost("201")]], null);
+
     const ports: PollingPorts = {
       ...fake.ports,
       source: {
@@ -157,6 +166,7 @@ describe("announcement discovery integration", () => {
         fetchLatest: () => Effect.succeed([{ raw: crosspost("200") }]),
       },
     };
+
     await Effect.runPromise(
       pollAll.pipe(Effect.provide(pollingServiceLayer(ports)))
     );

@@ -52,6 +52,7 @@ export const BridgeWorker = Worker("DiscordAnnouncementEmailBridge", {
   main: usePrebuiltWorker ? "./dist/worker.js" : "./src/worker.ts",
   name: workerConfig.name,
 });
+
 /** Runtime environment shape inferred from the configured Worker bindings. */
 export type WorkerEnv = InferEnv<typeof BridgeWorker>;
 
@@ -78,6 +79,7 @@ export default Stack(
       queueId: deadLetterQueue.queueId,
       scriptName: worker.workerName,
     });
+
     return {
       databaseName: database.databaseName,
       deadLetterQueueName: deadLetterQueue.queueName,

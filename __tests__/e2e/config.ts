@@ -14,12 +14,18 @@ export const parseProfile = (args: readonly string[]): string | undefined => {
   const next = flag === -1 ? undefined : args[flag + 1];
   const equals = args.find((argument) => argument.startsWith("--profile="));
   const profile = next ?? equals?.slice("--profile=".length);
-  if (flag !== -1 && (!next?.trim() || next.startsWith("--"))) {
+
+  if (
+    flag !== -1 &&
+    ((next?.trim() ?? "") === "" || next?.startsWith("--") === true)
+  ) {
     throw new Error("--profile requires an Alchemy profile name");
   }
-  if (equals !== undefined && !profile?.trim()) {
+
+  if (equals !== undefined && (profile?.trim() ?? "") === "") {
     throw new Error("--profile requires an Alchemy profile name");
   }
+
   return profile;
 };
 
@@ -30,12 +36,18 @@ export const parseProfile = (args: readonly string[]): string | undefined => {
  */
 export const configFromEnvironment = (env: NodeJS.ProcessEnv): E2EConfig => {
   const optionalConfig: MutableOptionalConfig = {};
-  if (env.CF_ACCESS_CLIENT_ID) {
+
+  if (env.CF_ACCESS_CLIENT_ID !== undefined && env.CF_ACCESS_CLIENT_ID !== "") {
     optionalConfig.accessClientId = env.CF_ACCESS_CLIENT_ID;
   }
-  if (env.CF_ACCESS_CLIENT_SECRET) {
+
+  if (
+    env.CF_ACCESS_CLIENT_SECRET !== undefined &&
+    env.CF_ACCESS_CLIENT_SECRET !== ""
+  ) {
     optionalConfig.accessClientSecret = env.CF_ACCESS_CLIENT_SECRET;
   }
+
   const config: E2EConfig = {
     adminToken: env.ADMIN_PREVIEW_TOKEN ?? "",
     guildId: env.DISCORD_GUILD_ID ?? "",
@@ -48,6 +60,7 @@ export const configFromEnvironment = (env: NodeJS.ProcessEnv): E2EConfig => {
     token: env.DISCORD_PREVIEW_BOT_TOKEN ?? "",
     ...optionalConfig,
   };
+
   const missing = Object.entries({
     ADMIN_PREVIEW_TOKEN: config.adminToken,
     DISCORD_E2E_ANNOUNCEMENT_CHANNEL_ID: config.sourceChannelId,
@@ -61,11 +74,13 @@ export const configFromEnvironment = (env: NodeJS.ProcessEnv): E2EConfig => {
   })
     .filter(([, value]) => !value)
     .map(([name]) => name);
+
   if (missing.length > 0) {
     throw new Error(
       `Missing required E2E configuration: ${missing.join(", ")}`
     );
   }
+
   return config;
 };
 
@@ -79,7 +94,7 @@ export const validateMode = (
   remote: boolean,
   profile: string | undefined
 ): void => {
-  if (remote && profile) {
+  if (remote && profile !== undefined && profile !== "") {
     throw new Error("--profile is supported only for local E2E runs");
   }
 };

@@ -37,11 +37,14 @@ export const authorized = async (
 ): Promise<boolean> => {
   const supplied =
     request.headers.get("authorization")?.replace(/^Bearer\s+/iu, "") ?? "";
+
   const expected = Redacted.value(Redacted.make(token));
+
   const [left, right] = await Promise.all([
     crypto.subtle.digest("SHA-256", new TextEncoder().encode(supplied)),
     crypto.subtle.digest("SHA-256", new TextEncoder().encode(expected)),
   ]);
+
   return (
     crypto.subtle.timingSafeEqual(
       new Uint8Array(left),
@@ -61,6 +64,7 @@ const pollResponse = async (
   runPoll: (env: WorkerEnv) => Promise<PollResult>
 ): Promise<Response> => {
   const result = await runPoll(env);
+
   return result.ok
     ? Response.json({ status: "accepted" }, { status: 202 })
     : Response.json({ error: "poll_failed" }, { status: 503 });
@@ -84,36 +88,44 @@ export const adminResponse = async (
   discordMessageId?: string
 ): Promise<Response> => {
   if (method === "POST" && pathname === "/admin/poll") {
-    return pollResponse(env, runPoll);
+    return await pollResponse(env, runPoll);
   }
+
   if (method === "POST" && pathname === "/admin/replay") {
     const reset = await Effect.runPromiseExit(
-      d1(() =>
-        env.DB.prepare(
-          "UPDATE deliveries SET status = 'pending', generation = lower(hex(randomblob(16))), last_error = NULL, claim_token = NULL, claim_expires_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE status = 'failed'"
-        ).run()
+      d1(
+        async () =>
+          await env.DB.prepare(
+            "UPDATE deliveries SET status = 'pending', generation = lower(hex(randomblob(16))), last_error = NULL, claim_token = NULL, claim_expires_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE status = 'failed'"
+          ).run()
       )
     );
+
     if (reset._tag === "Failure") {
       return Response.json({ error: "replay_failed" }, { status: 503 });
     }
+
     const result = await runPoll(env);
+
     return result.ok
       ? Response.json({ status: "replay_queued" }, { status: 202 })
       : Response.json({ error: "replay_failed" }, { status: 503 });
   }
+
   if (method === "GET" && pathname === "/admin/status") {
-    return Effect.runPromise(
-      d1(() =>
-        env.DB.prepare(
-          discordMessageId
-            ? "SELECT (SELECT MAX(updated_at) FROM channel_cursors) AS last_poll, (SELECT COUNT(*) FROM deliveries WHERE status = 'pending') AS pending, (SELECT COUNT(*) FROM deliveries WHERE status = 'failed') AS failed, (SELECT COUNT(*) FROM deliveries WHERE status = 'sent') AS sent, (SELECT COUNT(*) FROM deliveries d JOIN announcements a ON a.id = d.announcement_id WHERE a.discord_message_id = ? AND d.status = 'sent') AS target_sent, (SELECT COUNT(*) FROM deliveries d JOIN announcements a ON a.id = d.announcement_id WHERE a.discord_message_id = ? AND d.status = 'failed') AS target_failed"
-            : "SELECT (SELECT MAX(updated_at) FROM channel_cursors) AS last_poll, (SELECT COUNT(*) FROM deliveries WHERE status = 'pending') AS pending, (SELECT COUNT(*) FROM deliveries WHERE status = 'failed') AS failed, (SELECT COUNT(*) FROM deliveries WHERE status = 'sent') AS sent"
-        )
-          .bind(
-            ...(discordMessageId ? [discordMessageId, discordMessageId] : [])
+    const hasMessageId =
+      discordMessageId !== undefined && discordMessageId !== "";
+
+    return await Effect.runPromise(
+      d1(
+        async () =>
+          await env.DB.prepare(
+            hasMessageId
+              ? "SELECT (SELECT MAX(updated_at) FROM channel_cursors) AS last_poll, (SELECT COUNT(*) FROM deliveries WHERE status = 'pending') AS pending, (SELECT COUNT(*) FROM deliveries WHERE status = 'failed') AS failed, (SELECT COUNT(*) FROM deliveries WHERE status = 'sent') AS sent, (SELECT COUNT(*) FROM deliveries d JOIN announcements a ON a.id = d.announcement_id WHERE a.discord_message_id = ? AND d.status = 'sent') AS target_sent, (SELECT COUNT(*) FROM deliveries d JOIN announcements a ON a.id = d.announcement_id WHERE a.discord_message_id = ? AND d.status = 'failed') AS target_failed"
+              : "SELECT (SELECT MAX(updated_at) FROM channel_cursors) AS last_poll, (SELECT COUNT(*) FROM deliveries WHERE status = 'pending') AS pending, (SELECT COUNT(*) FROM deliveries WHERE status = 'failed') AS failed, (SELECT COUNT(*) FROM deliveries WHERE status = 'sent') AS sent"
           )
-          .first<StatusRow>()
+            .bind(...(hasMessageId ? [discordMessageId, discordMessageId] : []))
+            .first<StatusRow>()
       ).pipe(
         Effect.match({
           onFailure: () =>
@@ -126,7 +138,7 @@ export const adminResponse = async (
               sentDeliveries: row?.sent ?? 0,
             };
 
-            if (discordMessageId) {
+            if (hasMessageId) {
               response.targetFailedDeliveries = row?.target_failed ?? 0;
               response.targetSentDeliveries = row?.target_sent ?? 0;
             }
@@ -137,6 +149,7 @@ export const adminResponse = async (
       )
     );
   }
+
   return new Response("Not Found", { status: 404 });
 };
 
@@ -146,25 +159,25 @@ export const adminResponse = async (
  * @returns The configured subscription, or `undefined` when required values are absent.
  */
 export const subscriptionFromEnv = (env: WorkerEnv) => {
-  if (
-    !env.DISCORD_GUILD_ID ||
-    !env.DISCORD_TARGET_CHANNEL_ID ||
-    !env.EMAIL_TO
-  ) {
-    return;
-  }
-  return {
-    destinationChannelId: env.DISCORD_TARGET_CHANNEL_ID,
-    destinationGuildId: env.DISCORD_GUILD_ID,
-    emailTo: env.EMAIL_TO,
-    id: env.DISCORD_TARGET_CHANNEL_ID,
-    ...(env.SOURCE_GUILD_ID
-      ? { sourceGuildId: env.SOURCE_GUILD_ID }
-      : undefined),
-    ...(env.SOURCE_CHANNEL_ID
-      ? { sourceChannelId: env.SOURCE_CHANNEL_ID }
-      : undefined),
-  };
+  const configured =
+    Boolean(env.DISCORD_GUILD_ID) &&
+    Boolean(env.DISCORD_TARGET_CHANNEL_ID) &&
+    Boolean(env.EMAIL_TO);
+
+  return configured
+    ? {
+        destinationChannelId: env.DISCORD_TARGET_CHANNEL_ID,
+        destinationGuildId: env.DISCORD_GUILD_ID,
+        emailTo: env.EMAIL_TO,
+        id: env.DISCORD_TARGET_CHANNEL_ID,
+        ...(env.SOURCE_GUILD_ID !== undefined && env.SOURCE_GUILD_ID !== ""
+          ? { sourceGuildId: env.SOURCE_GUILD_ID }
+          : undefined),
+        ...(env.SOURCE_CHANNEL_ID !== undefined && env.SOURCE_CHANNEL_ID !== ""
+          ? { sourceChannelId: env.SOURCE_CHANNEL_ID }
+          : undefined),
+      }
+    : undefined;
 };
 
 /**
@@ -173,10 +186,10 @@ export const subscriptionFromEnv = (env: WorkerEnv) => {
  * @param subscription - Fully configured subscription to persist.
  * @returns The D1 operation result as a success or failure Exit.
  */
-export const seedSubscription = (
+export const seedSubscription = async (
   env: WorkerEnv,
   subscription: NonNullable<ReturnType<typeof subscriptionFromEnv>>
-) => Effect.runPromiseExit(ensureSubscription(env, subscription));
+) => await Effect.runPromiseExit(ensureSubscription(env, subscription));
 
 /**
  * Render a bounded infrastructure message or a generic fallback for other causes.
@@ -185,12 +198,14 @@ export const seedSubscription = (
  */
 export const safeError = (cause: Cause.Cause<unknown>): string => {
   const failure = Cause.findErrorOption(cause);
+
   if (
     failure._tag === "Some" &&
     failure.value instanceof BridgeInfrastructureError
   ) {
     return failure.value.message.slice(0, 300);
   }
+
   return "Unexpected failure";
 };
 

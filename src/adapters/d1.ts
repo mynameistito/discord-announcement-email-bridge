@@ -28,8 +28,10 @@ const toSubscription = (row: SubscriptionRow): Subscription => ({
   destinationGuildId: row.destination_guild_id,
   emailTo: row.email_to,
   id: row.id,
-  ...(row.source_guild_id ? { sourceGuildId: row.source_guild_id } : undefined),
-  ...(row.source_channel_id
+  ...(row.source_guild_id !== null && row.source_guild_id !== ""
+    ? { sourceGuildId: row.source_guild_id }
+    : undefined),
+  ...(row.source_channel_id !== null && row.source_channel_id !== ""
     ? { sourceChannelId: row.source_channel_id }
     : undefined),
 });
@@ -51,9 +53,11 @@ const persistBatch = (
 ) =>
   Effect.gen(function* persistBatchEffect() {
     const statements: D1PreparedStatement[] = [];
+
     for (const announcement of announcements) {
       const announcementId = `${subscription.id}:${announcement.message.id}`;
       const deliveryId = `${announcementId}:${subscription.emailTo.toLowerCase()}`;
+
       const key = yield* idempotencyKey(
         announcement,
         subscription.emailTo
@@ -62,6 +66,7 @@ const persistBatch = (
           (cause) => new BridgeInfrastructureError("idempotency_key", cause)
         )
       );
+
       statements.push(
         env.DB.prepare(
           "INSERT OR IGNORE INTO announcements (id, subscription_id, discord_message_id, source_guild_id, source_channel_id, source_message_id, follower_webhook_id, normalized_payload, source_metadata, message_created_at, edited_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
@@ -85,6 +90,7 @@ const persistBatch = (
         ).bind(deliveryId, subscription.emailTo, key, announcementId)
       );
     }
+
     if (cursor !== undefined) {
       statements.push(
         env.DB.prepare(
@@ -92,12 +98,14 @@ const persistBatch = (
         ).bind(subscription.id, cursor)
       );
     }
+
     for (let offset = 0; offset < statements.length; offset += 100) {
-      const result = yield* d1(() =>
-        env.DB.batch(statements.slice(offset, offset + 100))
+      const result = yield* d1(
+        async () => await env.DB.batch(statements.slice(offset, offset + 100))
       );
+
       if (result.some((entry) => !entry.success)) {
-        return yield* Effect.fail(
+        yield* Effect.fail(
           new BridgeInfrastructureError("persist_discovery", "D1 batch failed")
         );
       }
@@ -111,47 +119,55 @@ const persistBatch = (
  */
 export const makeRepository = (env: WorkerEnv): PollingPorts["repository"] => ({
   cursor: (id) =>
-    d1(() =>
-      env.DB.prepare(
-        "SELECT last_message_id FROM channel_cursors WHERE subscription_id = ?"
-      )
-        .bind(id)
-        .first<CursorRow>()
+    d1(
+      async () =>
+        await env.DB.prepare(
+          "SELECT last_message_id FROM channel_cursors WHERE subscription_id = ?"
+        )
+          .bind(id)
+          .first<CursorRow>()
     ).pipe(Effect.map((row) => row?.last_message_id ?? undefined)),
   enabledSubscriptions: () =>
-    d1(() =>
-      env.DB.prepare(
-        "SELECT id, destination_guild_id, destination_channel_id, source_guild_id, source_channel_id, email_to FROM subscriptions WHERE enabled = 1"
-      ).all<SubscriptionRow>()
+    d1(
+      async () =>
+        await env.DB.prepare(
+          "SELECT id, destination_guild_id, destination_channel_id, source_guild_id, source_channel_id, email_to FROM subscriptions WHERE enabled = 1"
+        ).all<SubscriptionRow>()
     ).pipe(Effect.map((result) => result.results.map(toSubscription))),
   initializeCursor: (id, messageId) =>
-    d1(() =>
-      env.DB.prepare(
-        "INSERT INTO channel_cursors (subscription_id, last_message_id) VALUES (?, ?) ON CONFLICT(subscription_id) DO UPDATE SET last_message_id = excluded.last_message_id, updated_at = CURRENT_TIMESTAMP WHERE channel_cursors.last_message_id IS NULL"
-      )
-        .bind(id, messageId ?? null)
-        .run()
+    d1(
+      async () =>
+        await env.DB.prepare(
+          "INSERT INTO channel_cursors (subscription_id, last_message_id) VALUES (?, ?) ON CONFLICT(subscription_id) DO UPDATE SET last_message_id = excluded.last_message_id, updated_at = CURRENT_TIMESTAMP WHERE channel_cursors.last_message_id IS NULL"
+        )
+          .bind(id, messageId ?? null)
+          .run()
     ).pipe(Effect.asVoid),
   markEnqueued: (id) =>
-    d1(() =>
-      env.DB.prepare(
-        "UPDATE deliveries SET status = 'queued', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'pending'"
-      )
-        .bind(id)
-        .run()
+    d1(
+      async () =>
+        await env.DB.prepare(
+          "UPDATE deliveries SET status = 'queued', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'pending'"
+        )
+          .bind(id)
+          .run()
     ).pipe(Effect.asVoid),
   pendingDeliveries: () =>
     Effect.gen(function* pendingDeliveriesEffect() {
-      yield* d1(() =>
-        env.DB.prepare(
-          "UPDATE deliveries SET status = 'pending', claim_token = NULL, claim_expires_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE status = 'queued' AND claim_token IS NOT NULL AND claim_expires_at <= CURRENT_TIMESTAMP"
-        ).run()
+      yield* d1(
+        async () =>
+          await env.DB.prepare(
+            "UPDATE deliveries SET status = 'pending', claim_token = NULL, claim_expires_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE status = 'queued' AND claim_token IS NOT NULL AND claim_expires_at <= CURRENT_TIMESTAMP"
+          ).run()
       );
-      const result = yield* d1(() =>
-        env.DB.prepare(
-          "SELECT d.id AS delivery_id, d.announcement_id, d.generation FROM deliveries d JOIN announcements a ON a.id = d.announcement_id WHERE d.status = 'pending' ORDER BY d.created_at LIMIT 500"
-        ).all<DeliveryRow>()
+
+      const result = yield* d1(
+        async () =>
+          await env.DB.prepare(
+            "SELECT d.id AS delivery_id, d.announcement_id, d.generation FROM deliveries d JOIN announcements a ON a.id = d.announcement_id WHERE d.status = 'pending' ORDER BY d.created_at LIMIT 500"
+          ).all<DeliveryRow>()
       );
+
       return result.results.map((row) => ({
         announcementId: row.announcement_id,
         deliveryId: row.delivery_id,
@@ -172,22 +188,23 @@ export const ensureSubscription = (
   env: WorkerEnv,
   subscription: Subscription
 ) =>
-  d1(() =>
-    env.DB.batch([
-      env.DB.prepare(
-        "UPDATE subscriptions SET enabled = 0, updated_at = CURRENT_TIMESTAMP WHERE id != ? AND enabled = 1"
-      ).bind(subscription.id),
-      env.DB.prepare(
-        "INSERT INTO subscriptions (id, destination_guild_id, destination_channel_id, source_guild_id, source_channel_id, email_to, enabled) VALUES (?, ?, ?, ?, ?, ?, 1) ON CONFLICT(id) DO UPDATE SET destination_guild_id = excluded.destination_guild_id, destination_channel_id = excluded.destination_channel_id, source_guild_id = excluded.source_guild_id, source_channel_id = excluded.source_channel_id, email_to = excluded.email_to, enabled = 1, updated_at = CURRENT_TIMESTAMP"
-      ).bind(
-        subscription.id,
-        subscription.destinationGuildId,
-        subscription.destinationChannelId,
-        subscription.sourceGuildId ?? null,
-        subscription.sourceChannelId ?? null,
-        subscription.emailTo
-      ),
-    ])
+  d1(
+    async () =>
+      await env.DB.batch([
+        env.DB.prepare(
+          "UPDATE subscriptions SET enabled = 0, updated_at = CURRENT_TIMESTAMP WHERE id != ? AND enabled = 1"
+        ).bind(subscription.id),
+        env.DB.prepare(
+          "INSERT INTO subscriptions (id, destination_guild_id, destination_channel_id, source_guild_id, source_channel_id, email_to, enabled) VALUES (?, ?, ?, ?, ?, ?, 1) ON CONFLICT(id) DO UPDATE SET destination_guild_id = excluded.destination_guild_id, destination_channel_id = excluded.destination_channel_id, source_guild_id = excluded.source_guild_id, source_channel_id = excluded.source_channel_id, email_to = excluded.email_to, enabled = 1, updated_at = CURRENT_TIMESTAMP"
+        ).bind(
+          subscription.id,
+          subscription.destinationGuildId,
+          subscription.destinationChannelId,
+          subscription.sourceGuildId ?? null,
+          subscription.sourceChannelId ?? null,
+          subscription.emailTo
+        ),
+      ])
   ).pipe(Effect.asVoid);
 
 /** D1 row shape selected for an enabled subscription. */
@@ -199,10 +216,12 @@ interface SubscriptionRow {
   readonly source_channel_id: string | null;
   readonly email_to: string;
 }
+
 /** D1 row shape returned by a subscription cursor lookup. */
 interface CursorRow {
   readonly last_message_id: string | null;
 }
+
 /** D1 row shape used to enqueue pending deliveries. */
 interface DeliveryRow {
   readonly delivery_id: string;

@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- Bun 1.4.2
+- Bun 1.4.4
 - A local copy of the repository
 - Non-production credentials if you run the Worker against Discord, Cloudflare, or Resend
 

@@ -7,9 +7,9 @@ import vitest from "ultracite/oxlint/vitest";
 const jsPlugins = selectJsPlugins(["github", "sonarjs"]);
 
 export default defineConfig({
+  env: core.env,
   extends: [core, vitest, antiSlop, jsPlugins],
   ignorePatterns: core.ignorePatterns,
-
   jsPlugins: [
     ...jsPlugins.jsPlugins,
 
@@ -24,7 +24,7 @@ export default defineConfig({
       specifier: "eslint-plugin-jsdoc",
     },
   ],
-
+  options: { typeAware: true },
   overrides: [
     {
       files: ["src/**/*.{ts,tsx,mts,cts}"],

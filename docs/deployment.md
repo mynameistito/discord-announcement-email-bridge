@@ -34,7 +34,7 @@ The `workflow_run` deployment workflow runs from the default branch. A pull requ
 
 The Cloudflare API token needs account-scoped write access for Workers Scripts, D1, and Queues. Include Account Settings Read if the token provider requires account metadata lookup. Workers Routes access is not needed unless a custom route or domain is added. See [Cloudflare API token permissions](https://developers.cloudflare.com/fundamentals/api/reference/permissions/) and the [Workers permissions guide](https://developers.cloudflare.com/workers/authorization/workers/).
 
-The manually triggered E2E workflow uses separate non-production fields: `CLOUDFLARE_PREVIEW_API_TOKEN`, `CLOUDFLARE_PREVIEW_ACCOUNT_ID`, `DISCORD_PREVIEW_BOT_TOKEN`, `DISCORD_GUILD_ID`, `DISCORD_E2E_ANNOUNCEMENT_CHANNEL_ID`, `DISCORD_E2E_RECEIVER_CHANNEL_ID`, `EMAIL_TO`, `RESEND_PREVIEW_API_KEY`, `EMAIL_FROM_NAME`, `EMAIL_FROM_EMAIL`, `ADMIN_PREVIEW_TOKEN`, `CF_ACCESS_CLIENT_ID`, and `CF_ACCESS_CLIENT_SECRET`. These fields are for the [live E2E test](operations.md#automated-live-e2e-test), not ordinary PR previews.
+The manually triggered E2E workflow uses non-production fields: `CLOUDFLARE_PREVIEW_API_TOKEN`, `CLOUDFLARE_PREVIEW_ACCOUNT_ID`, `DISCORD_PREVIEW_BOT_TOKEN`, `DISCORD_GUILD_ID`, `DISCORD_E2E_ANNOUNCEMENT_CHANNEL_ID`, `DISCORD_E2E_RECEIVER_CHANNEL_ID`, `E2E_EMAIL_TO`, `RESEND_PREVIEW_API_KEY`, `EMAIL_FROM_NAME`, `EMAIL_FROM_EMAIL`, `ADMIN_PREVIEW_TOKEN`, `CF_ACCESS_CLIENT_ID`, and `CF_ACCESS_CLIENT_SECRET`. The dedicated recipient is exposed to the E2E runtime as `EMAIL_TO`. These fields are for the [live E2E test](operations.md#automated-live-e2e-test), not ordinary PR previews.
 
 ## Manual deployment
 

@@ -25,7 +25,7 @@ jobs:
         with:
           version: 2.34.1
         env:
-          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_TARGET_SERVICE_ACCOUNT_TOKEN }}
           CLOUDFLARE_PREVIEW_API_TOKEN: op://i56qshgciuy4cdg4pjrilaeriy/huou7uzehzinkmpm3le3gfimme/ynusvijqjrycp5dkiyxma725sm
           CLOUDFLARE_PREVIEW_ACCOUNT_ID: op://i56qshgciuy4cdg4pjrilaeriy/huou7uzehzinkmpm3le3gfimme/jcpasxrfy5xau45vzcbe4toggu
           DISCORD_PREVIEW_BOT_TOKEN: op://i56qshgciuy4cdg4pjrilaeriy/huou7uzehzinkmpm3le3gfimme/bvjmz2zqmz5kciw5a6vcovqjgu

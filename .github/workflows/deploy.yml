@@ -28,7 +28,7 @@ jobs:
         with:
           version: 2.34.1
         env:
-          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_TARGET_SERVICE_ACCOUNT_TOKEN }}
           CLOUDFLARE_API_TOKEN: op://i56qshgciuy4cdg4pjrilaeriy/huou7uzehzinkmpm3le3gfimme/oy3puotuvwkllmdyid7zki2sia
           CLOUDFLARE_ACCOUNT_ID: op://i56qshgciuy4cdg4pjrilaeriy/huou7uzehzinkmpm3le3gfimme/yq5irxnmhobzqfx2knbytjtrc4
           DISCORD_BOT_TOKEN: op://i56qshgciuy4cdg4pjrilaeriy/huou7uzehzinkmpm3le3gfimme/kfirzfgrm6bcyxzlxxxyrihgc4
@@ -47,7 +47,7 @@ jobs:
         with:
           version: 2.34.1
         env:
-          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_TARGET_SERVICE_ACCOUNT_TOKEN }}
           CLOUDFLARE_API_TOKEN: op://i56qshgciuy4cdg4pjrilaeriy/huou7uzehzinkmpm3le3gfimme/oy3puotuvwkllmdyid7zki2sia
           CLOUDFLARE_ACCOUNT_ID: op://i56qshgciuy4cdg4pjrilaeriy/huou7uzehzinkmpm3le3gfimme/yq5irxnmhobzqfx2knbytjtrc4
 
@@ -58,7 +58,7 @@ jobs:
         with:
           version: 2.34.1
         env:
-          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_TARGET_SERVICE_ACCOUNT_TOKEN }}
           CLOUDFLARE_API_TOKEN: op://i56qshgciuy4cdg4pjrilaeriy/huou7uzehzinkmpm3le3gfimme/oy3puotuvwkllmdyid7zki2sia
           CLOUDFLARE_ACCOUNT_ID: op://i56qshgciuy4cdg4pjrilaeriy/huou7uzehzinkmpm3le3gfimme/yq5irxnmhobzqfx2knbytjtrc4
 

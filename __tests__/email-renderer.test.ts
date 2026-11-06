@@ -49,9 +49,11 @@ const webhook = {
 
 const classified = (candidate: DiscordMessage = message()) => {
   const result = classifyFollowerMessage(candidate, webhook, subscription);
+
   if (!result) {
     throw new Error("fixture should classify");
   }
+
   return result;
 };
 
@@ -101,6 +103,7 @@ describe("announcement email rendering", () => {
         ],
       })
     );
+
     const html = renderHtml({
       ...announcement,
       sourceMetadata: {
@@ -132,6 +135,7 @@ describe("announcement email rendering", () => {
 
   it("renders rich embed authors, icons, colors, images, and footers", () => {
     const imageUrl = "https://cdn.discordapp.com/attachments/e2e/photo.jpg";
+
     const announcement = classified(
       message({
         attachments: [
@@ -162,6 +166,7 @@ describe("announcement email rendering", () => {
         ],
       })
     );
+
     const html = renderHtml(announcement);
     const text = renderText(announcement);
 

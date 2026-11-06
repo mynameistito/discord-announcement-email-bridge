@@ -40,19 +40,24 @@ const toDiscordApiError = (cause: unknown): DiscordApiError => {
   if (cause instanceof DiscordApiError) {
     return cause;
   }
+
   const error = Schema.decodeUnknownOption(
     Schema.Struct({
       _tag: Schema.String,
     })
   )(cause);
+
   const status =
     error._tag === "Some" ? errorStatuses.get(error.value._tag) : undefined;
+
   const safeStatus = status ?? 502;
+
   const retryable =
     safeStatus === 408 ||
     safeStatus === 423 ||
     safeStatus === 429 ||
     safeStatus >= 500;
+
   return new DiscordApiError(
     `Discord REST request failed (HTTP ${safeStatus})`,
     safeStatus,
@@ -157,21 +162,27 @@ const sourceMetadata = (
         const channelData = yield* Schema.decodeUnknownEffect(
           Schema.Struct({ name: Schema.String })
         )(channel);
+
         const guildData = yield* Schema.decodeUnknownEffect(
           Schema.Struct({
             icon: Schema.NullOr(Schema.String),
             name: Schema.String,
           })
         )(guild);
+
         const metadata = {
           channelName: channelData.name,
           guildName: guildData.name,
         };
+
         const iconHash = guildData.icon;
-        if (!iconHash) {
+
+        if (iconHash === undefined || iconHash === null || iconHash === "") {
           return metadata;
         }
+
         const extension = iconHash.startsWith("a_") ? "gif" : "png";
+
         return {
           ...metadata,
           guildIconUrl: `https://cdn.discordapp.com/icons/${encodeURIComponent(guildId)}/${encodeURIComponent(iconHash)}.${extension}?size=128`,

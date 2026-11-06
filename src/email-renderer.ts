@@ -2,6 +2,9 @@ import type { Announcement, DiscordMessage } from "@/domain";
 import { renderEmailMarkdown } from "@/email-markdown";
 import { renderInline } from "@/email-markdown-inline";
 
+const hasText = (value: string | undefined): value is string =>
+  value !== undefined && value !== "";
+
 /**
  * Escape HTML metacharacters before inserting untrusted Discord content.
  * @param value - Untrusted text.
@@ -13,18 +16,23 @@ const escapeHtml = (value: string): string =>
       case '"': {
         return "&quot;";
       }
+
       case "&": {
         return "&amp;";
       }
+
       case "'": {
         return "&#39;";
       }
+
       case "<": {
         return "&lt;";
       }
+
       case ">": {
         return "&gt;";
       }
+
       default: {
         return character;
       }
@@ -46,9 +54,11 @@ const escapeAttribute = (value: string): string =>
  */
 const formatTimestamp = (value: string): string => {
   const date = new Date(value);
+
   if (Number.isNaN(date.getTime())) {
     return value;
   }
+
   const parts = new Intl.DateTimeFormat("en-GB", {
     day: "2-digit",
     hour: "2-digit",
@@ -58,8 +68,10 @@ const formatTimestamp = (value: string): string => {
     timeZone: "UTC",
     year: "numeric",
   }).formatToParts(date);
+
   const part = (type: Intl.DateTimeFormatPartTypes): string =>
     parts.find((item) => item.type === type)?.value ?? "";
+
   return `${part("hour")}:${part("minute")} ${part("day")}/${part("month")}/${part("year")}`;
 };
 
@@ -71,6 +83,7 @@ const formatTimestamp = (value: string): string => {
 const isDiscordMediaUrl = (value: string): boolean => {
   try {
     const url = new URL(value);
+
     return (
       url.protocol === "https:" &&
       ["discordapp.com", "discordapp.net"].some(
@@ -94,7 +107,9 @@ const linkedImage = (url: string, alt: string, style: string): string => {
   if (!isDiscordMediaUrl(url)) {
     return "";
   }
+
   const safeUrl = escapeAttribute(url);
+
   return `<a href="${safeUrl}"><img src="${safeUrl}" alt="${escapeHtml(alt)}" style="${style}" /></a>`;
 };
 
@@ -117,38 +132,48 @@ const discordMessageUrl = (announcement: Announcement): string =>
 
 const renderEmbedAuthor = (embed: DiscordMessage["embeds"][number]): string => {
   const { author } = embed;
-  if (!author?.name) {
+
+  if (author === undefined || !hasText(author.name)) {
     return "";
   }
+
   const name = renderInline(author.name);
-  const linkedName = author.url
+
+  const linkedName = hasText(author.url)
     ? `<a href="${escapeAttribute(author.url)}">${name}</a>`
     : name;
-  const icon = author.icon_url
+
+  const icon = hasText(author.icon_url)
     ? linkedImage(
         author.icon_url,
         author.name,
         "width:20px;height:20px;border-radius:50%;vertical-align:middle;margin-right:6px"
       )
     : "";
+
   return `<p>${icon}${linkedName}</p>`;
 };
 
 const renderEmbedFooter = (embed: DiscordMessage["embeds"][number]): string => {
-  const icon = embed.footer?.icon_url
-    ? linkedImage(
-        embed.footer.icon_url,
-        "",
-        "width:16px;height:16px;vertical-align:middle;margin-right:6px"
-      )
-    : "";
+  const icon =
+    embed.footer !== undefined && hasText(embed.footer.icon_url)
+      ? linkedImage(
+          embed.footer.icon_url,
+          "",
+          "width:16px;height:16px;vertical-align:middle;margin-right:6px"
+        )
+      : "";
+
   const text = embed.footer ? renderInline(embed.footer.text) : "";
-  const timestamp = embed.timestamp
+
+  const timestamp = hasText(embed.timestamp)
     ? ` · ${escapeHtml(formatTimestamp(embed.timestamp))} UTC`
     : "";
+
   if (!text && !timestamp) {
     return "";
   }
+
   return `<p>${icon}${text}${timestamp}</p>`;
 };
 
@@ -161,6 +186,7 @@ const embedBorderColor = (color: number | undefined): string => {
   ) {
     return "";
   }
+
   return ` style="border-left:4px solid #${color.toString(16).padStart(6, "0")};padding-left:12px"`;
 };
 
@@ -168,15 +194,19 @@ const renderEmbedThumbnail = (
   embed: DiscordMessage["embeds"][number]
 ): string => {
   const url = embed.thumbnail?.url;
-  if (!url) {
+
+  if (!hasText(url)) {
     return "";
   }
+
   const image = linkedImage(
     url,
     embed.title ?? "Announcement thumbnail",
     "display:block;width:80px;height:80px;max-width:80px;object-fit:cover;border-radius:8px"
   );
+
   const linkedUrl = `<a href="${escapeAttribute(url)}">${escapeHtml(url)}</a>`;
+
   return `<td width="80" valign="top" style="width:80px;padding:0 0 12px 12px">${image || linkedUrl}</td>`;
 };
 
@@ -187,24 +217,31 @@ const renderEmbedThumbnail = (
  */
 const renderEmbed = (embed: DiscordMessage["embeds"][number]): string => {
   const title = renderInline(embed.title ?? "");
-  const linkedTitle = embed.url
+
+  const linkedTitle = hasText(embed.url)
     ? `<a href="${escapeAttribute(embed.url)}">${title}</a>`
     : title;
+
   const author = renderEmbedAuthor(embed);
   const description = renderEmailMarkdown(embed.description ?? "");
+
   const fields = (embed.fields ?? [])
     .map(
       (field) =>
         `<p><strong>${renderInline(field.name ?? "")}</strong> ${renderInline(field.value ?? "")}</p>`
     )
     .join("");
+
   const thumbnail = renderEmbedThumbnail(embed);
   const content = `<div>${author}<h2>${linkedTitle}</h2><div>${description}</div>${fields}</div>`;
+
   const mainContent = thumbnail
     ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td valign="top">${content}</td>${thumbnail}</tr></table>`
     : content;
+
   const imageUrl = embed.image?.url;
-  const image = imageUrl
+
+  const image = hasText(imageUrl)
     ? linkedImage(
         imageUrl,
         embed.title ?? "Announcement image",
@@ -212,7 +249,9 @@ const renderEmbed = (embed: DiscordMessage["embeds"][number]): string => {
       ) ||
       `<p><a href="${escapeAttribute(imageUrl)}">${escapeHtml(imageUrl)}</a></p>`
     : "";
+
   const footer = renderEmbedFooter(embed);
+
   return `<section${embedBorderColor(embed.color)}>${mainContent}${image}${footer}</section>`;
 };
 
@@ -244,17 +283,21 @@ export const renderHtml = (announcement: Announcement): string => {
   const metadata = announcement.sourceMetadata;
   const server = metadata?.guildName ?? "Discord announcement";
   const channel = metadata?.channelName ?? announcement.sourceChannelId;
-  const icon = metadata?.guildIconUrl
-    ? linkedImage(
-        metadata.guildIconUrl,
-        server,
-        "width:48px;height:48px;border-radius:50%;display:block;object-fit:cover"
-      )
-    : "";
+
+  const icon =
+    metadata !== undefined && hasText(metadata.guildIconUrl)
+      ? linkedImage(
+          metadata.guildIconUrl,
+          server,
+          "width:48px;height:48px;border-radius:50%;display:block;object-fit:cover"
+        )
+      : "";
+
   const iconCell = icon ? `<td style="padding-right:12px">${icon}</td>` : "";
   const header = `<table role="presentation" cellpadding="0" cellspacing="0" style="margin-bottom:24px"><tr>${iconCell}<td><strong>${escapeHtml(server)}</strong><br /><a href="${messageUrl}" style="color:#5865f2;text-decoration:none">#${escapeHtml(channel)}</a> <span style="color:#747f8d">· ${escapeHtml(formatTimestamp(message.timestamp))} UTC</span><br /><span style="color:#747f8d">${escapeHtml(message.author.username)}</span></td></tr></table>`;
   const content = renderEmailMarkdown(message.content);
   const embeds = message.embeds.map(renderEmbed).join("");
+
   const embedImages = new Set(
     message.embeds.flatMap((embed) =>
       [embed.image?.url, embed.thumbnail?.url].filter(
@@ -262,10 +305,12 @@ export const renderHtml = (announcement: Announcement): string => {
       )
     )
   );
+
   const attachments = message.attachments
     .filter((attachment) => !embedImages.has(attachment.url))
     .map(renderAttachment)
     .join("");
+
   return `<main>${header}<div>${content}</div>${embeds}${attachments}</main>`;
 };
 
@@ -277,6 +322,7 @@ export const renderHtml = (announcement: Announcement): string => {
 export const renderText = (announcement: Announcement): string => {
   const { message } = announcement;
   const metadata = announcement.sourceMetadata;
+
   const embeds = message.embeds
     .map((embed) =>
       [
@@ -295,9 +341,11 @@ export const renderText = (announcement: Announcement): string => {
     )
     .filter(Boolean)
     .join("\n\n");
+
   const attachments = message.attachments
     .map((item) => `${item.filename}: ${item.url}`)
     .join("\n");
+
   return [
     `${metadata?.guildName ?? "Discord announcement"} #${metadata?.channelName ?? announcement.sourceChannelId} · ${formatTimestamp(message.timestamp)} UTC · ${message.author.username}`,
     message.content,

@@ -6,8 +6,22 @@ import {
   waitUntil,
 } from "@tests/e2e/http.ts";
 import type { E2EConfig, LogTone, WorkerStatus } from "@tests/e2e/types.ts";
+import { Schema } from "effect";
 
 type Log = (message: string, tone?: LogTone) => void;
+
+const hasText = (value: string | undefined): value is string =>
+  value !== undefined && value !== "";
+
+const isDeliveryCount = (value: number): boolean =>
+  Number.isSafeInteger(value) && value >= 0;
+
+const WorkerStatusSchema = Schema.Struct({
+  failedDeliveries: Schema.Number,
+  sentDeliveries: Schema.Number,
+  targetFailedDeliveries: Schema.optionalKey(Schema.Number),
+  targetSentDeliveries: Schema.optionalKey(Schema.Number),
+});
 
 /**
  * Remove trailing slashes from a Worker base URL.
@@ -16,9 +30,11 @@ type Log = (message: string, tone?: LogTone) => void;
  */
 export const normalizedWorkerUrl = (value: string): string => {
   let normalized = value;
+
   while (normalized.endsWith("/")) {
     normalized = normalized.slice(0, -1);
   }
+
   return normalized;
 };
 
@@ -29,10 +45,12 @@ export const normalizedWorkerUrl = (value: string): string => {
  */
 const adminHeaders = (config: E2EConfig): Headers => {
   const headers = new Headers({ Authorization: `Bearer ${config.adminToken}` });
-  if (config.accessClientId && config.accessClientSecret) {
+
+  if (hasText(config.accessClientId) && hasText(config.accessClientSecret)) {
     headers.set("CF-Access-Client-Id", config.accessClientId);
     headers.set("CF-Access-Client-Secret", config.accessClientSecret);
   }
+
   return headers;
 };
 
@@ -50,10 +68,12 @@ export const waitForWorkerReady = async (
 ): Promise<void> => {
   const base = normalizedWorkerUrl(workerUrl);
   const headers = new Headers();
-  if (config.accessClientId && config.accessClientSecret) {
+
+  if (hasText(config.accessClientId) && hasText(config.accessClientSecret)) {
     headers.set("CF-Access-Client-Id", config.accessClientId);
     headers.set("CF-Access-Client-Secret", config.accessClientSecret);
   }
+
   await waitUntil(
     async (probeSignal) => {
       try {
@@ -62,14 +82,17 @@ export const waitForWorkerReady = async (
           { headers, redirect: "manual", signal: probeSignal },
           signal
         );
+
         if (isCloudflareAccessRedirect(response)) {
           throw new CloudflareAccessRedirectError("Worker health check");
         }
+
         return response.ok;
       } catch (error) {
         if (signal.aborted || error instanceof CloudflareAccessRedirectError) {
           throw error;
         }
+
         return false;
       }
     },
@@ -92,9 +115,11 @@ const checkPoll = async (
     { headers, method: "POST", redirect: "manual" },
     signal
   );
+
   if (isCloudflareAccessRedirect(response)) {
     throw new CloudflareAccessRedirectError(label);
   }
+
   if (response.status !== 202) {
     throw new Error(`${label} failed (HTTP ${response.status})`);
   }
@@ -107,17 +132,18 @@ const checkPoll = async (
  * @param signal - Workflow cancellation signal.
  * @returns Promise resolved when the poll is accepted.
  */
-export const seedCursor = (
+export const seedCursor = async (
   url: string,
   config: E2EConfig,
   signal: AbortSignal
-): Promise<void> =>
-  checkPoll(
+): Promise<void> => {
+  await checkPoll(
     normalizedWorkerUrl(url),
     adminHeaders(config),
     "Baseline Worker poll",
     signal
   );
+};
 
 /**
  * Poll the bridge after the test crosspost has been created.
@@ -126,17 +152,18 @@ export const seedCursor = (
  * @param signal - Workflow cancellation signal.
  * @returns Promise resolved when the poll is accepted.
  */
-export const pollBridge = (
+export const pollBridge = async (
   url: string,
   config: E2EConfig,
   signal: AbortSignal
-): Promise<void> =>
-  checkPoll(
+): Promise<void> => {
+  await checkPoll(
     normalizedWorkerUrl(url),
     adminHeaders(config),
     "Worker poll",
     signal
   );
+};
 
 /**
  * Read and validate delivery counters for one Discord message.
@@ -154,20 +181,35 @@ const deliveryStatus = async (
 ): Promise<WorkerStatus> => {
   const statusUrl = new URL(`${url}/admin/status`);
   statusUrl.searchParams.set("discordMessageId", messageId);
+
   const status = await jsonRequest<WorkerStatus>(
     statusUrl.toString(),
     { headers, redirect: "manual", signal },
     "Read Worker delivery status",
-    signal
+    signal,
+    WorkerStatusSchema
   );
+
   if (
-    !Number.isSafeInteger(status.sentDeliveries) ||
-    !Number.isSafeInteger(status.failedDeliveries)
+    !isDeliveryCount(status.sentDeliveries) ||
+    !isDeliveryCount(status.failedDeliveries)
   ) {
     throw new TypeError(
       "Worker status response contains invalid delivery counts"
     );
   }
+
+  if (
+    (status.targetSentDeliveries !== undefined &&
+      !isDeliveryCount(status.targetSentDeliveries)) ||
+    (status.targetFailedDeliveries !== undefined &&
+      !isDeliveryCount(status.targetFailedDeliveries))
+  ) {
+    throw new TypeError(
+      "Worker status response contains invalid delivery counts"
+    );
+  }
+
   return status;
 };
 
@@ -198,9 +240,11 @@ export const waitForDelivery = async (
         messageId,
         probeSignal
       );
+
       if ((status.targetFailedDeliveries ?? 0) > 0) {
         throw new Error("Worker recorded a failed email delivery");
       }
+
       return status;
     },
     (status) => (status.targetSentDeliveries ?? 0) > 0,

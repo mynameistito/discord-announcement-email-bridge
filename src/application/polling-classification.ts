@@ -15,18 +15,28 @@ const sourceMetadataFromWebhook = (
 ): SourceMetadata | undefined => {
   const guild = webhook?.source_guild;
   const channel = webhook?.source_channel;
-  if (!guild?.name || !channel?.name) {
+
+  if (guild?.name === undefined || guild.name === "") {
     return undefined;
   }
+
+  if (channel?.name === undefined || channel.name === "") {
+    return undefined;
+  }
+
   const iconHash = guild.icon;
+
   const metadata = {
     channelName: channel.name,
     guildName: guild.name,
   };
-  if (!iconHash) {
+
+  if (iconHash === null || iconHash === undefined || iconHash === "") {
     return metadata;
   }
+
   const extension = iconHash.startsWith("a_") ? "gif" : "png";
+
   return {
     ...metadata,
     guildIconUrl: `https://cdn.discordapp.com/icons/${encodeURIComponent(guild.id)}/${encodeURIComponent(iconHash)}.${extension}?size=128`,
@@ -59,15 +69,23 @@ export const classifyMessages = (
   Effect.gen(function* classifyMessagesEffect() {
     const announcements: Announcement[] = [];
     const webhooks = new Map<string, FollowerWebhook | null>();
+
     const sourceMetadata = new Map<
       string,
       Announcement["sourceMetadata"] | null
     >();
+
     for (const message of messages) {
-      if (!message.webhook_id || !hasCrosspostFlag(message.flags ?? 0)) {
+      if (
+        message.webhook_id === undefined ||
+        message.webhook_id === "" ||
+        !hasCrosspostFlag(message.flags ?? 0)
+      ) {
         continue;
       }
+
       let webhook = webhooks.get(message.webhook_id) ?? null;
+
       if (!webhooks.has(message.webhook_id)) {
         webhook = yield* ports.source.getWebhook(message.webhook_id).pipe(
           Effect.catchIf(
@@ -77,15 +95,19 @@ export const classifyMessages = (
         );
         webhooks.set(message.webhook_id, webhook);
       }
+
       const announcement = classifyFollowerMessage(
         message,
         webhook,
         subscription
       );
+
       if (announcement && hasReadableContent(message)) {
         const key = `${announcement.sourceGuildId}:${announcement.sourceChannelId}`;
+
         if (!sourceMetadata.has(key)) {
           const webhookMetadata = sourceMetadataFromWebhook(webhook);
+
           const metadata =
             webhookMetadata ??
             (yield* ports.source
@@ -108,9 +130,12 @@ export const classifyMessages = (
                   () => Effect.succeed(null)
                 )
               ));
+
           sourceMetadata.set(key, metadata);
         }
+
         const metadata = sourceMetadata.get(key);
+
         if (metadata) {
           announcements.push({ ...announcement, sourceMetadata: metadata });
         } else {
@@ -126,5 +151,6 @@ export const classifyMessages = (
         );
       }
     }
+
     return announcements;
   });

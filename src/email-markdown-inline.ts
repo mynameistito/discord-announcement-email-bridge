@@ -4,18 +4,23 @@ const escapeHtml = (value: string): string =>
       case "&": {
         return "&amp;";
       }
+
       case "<": {
         return "&lt;";
       }
+
       case ">": {
         return "&gt;";
       }
+
       case '"': {
         return "&quot;";
       }
+
       case "'": {
         return "&#39;";
       }
+
       default: {
         return character;
       }
@@ -32,6 +37,7 @@ export const escapeEmailHtml = (value: string): string => escapeHtml(value);
 const safeHref = (value: string): string | undefined => {
   try {
     const url = new URL(value);
+
     return url.protocol === "http:" || url.protocol === "https:"
       ? url.href
       : undefined;
@@ -42,11 +48,13 @@ const safeHref = (value: string): string | undefined => {
 
 const closingIndex = (source: string, delimiter: string, start: number) => {
   const index = source.indexOf(delimiter, start);
+
   return index > start ? index : -1;
 };
 
 const linkDestinationEnd = (source: string, start: number): number => {
   let depth = 0;
+
   for (let index = start; index < source.length; index += 1) {
     if (source[index] === "(") {
       depth += 1;
@@ -54,9 +62,11 @@ const linkDestinationEnd = (source: string, start: number): number => {
       if (depth === 0) {
         return index;
       }
+
       depth -= 1;
     }
   }
+
   return -1;
 };
 
@@ -69,7 +79,9 @@ const inlineCode = (source: string, index: number): InlineToken | undefined => {
   if (source[index] !== "`") {
     return undefined;
   }
+
   const end = closingIndex(source, "`", index + 1);
+
   return end < 0
     ? undefined
     : {
@@ -86,14 +98,19 @@ const inlineLink = (
   if (source[index] !== "[") {
     return undefined;
   }
+
   const labelEnd = source.indexOf("](", index + 1);
+
   const urlEnd =
     labelEnd === -1 ? -1 : linkDestinationEnd(source, labelEnd + 2);
+
   if (labelEnd <= index + 1 || urlEnd <= labelEnd + 2) {
     return undefined;
   }
+
   const href = safeHref(source.slice(labelEnd + 2, urlEnd));
-  return href
+
+  return href !== undefined && href !== ""
     ? {
         html: `<a href="${escapeHtml(href)}">${renderNested(source.slice(index + 1, labelEnd))}</a>`,
         next: urlEnd + 1,
@@ -108,7 +125,9 @@ const inlineSpoiler = (
   if (!source.startsWith("||", index)) {
     return undefined;
   }
+
   const end = closingIndex(source, "||", index + 2);
+
   return end < 0
     ? undefined
     : { html: escapeHtml(source.slice(index, end + 2)), next: end + 2 };
@@ -129,19 +148,24 @@ const inlineFormatting = (
 ): InlineToken | undefined => {
   if (source.startsWith("***", index)) {
     const end = closingIndex(source, "***", index + 3);
+
     if (end >= 0) {
       const content = renderNested(source.slice(index + 3, end));
+
       return {
         html: `<strong><em>${content}</em></strong>`,
         next: end + 3,
       };
     }
   }
+
   for (const [delimiter, tag] of formatting) {
     if (!source.startsWith(delimiter, index)) {
       continue;
     }
+
     const end = closingIndex(source, delimiter, index + delimiter.length);
+
     if (end >= 0) {
       return {
         html: `<${tag}>${renderNested(source.slice(index + delimiter.length, end))}</${tag}>`,
@@ -149,6 +173,7 @@ const inlineFormatting = (
       };
     }
   }
+
   return undefined;
 };
 
@@ -160,12 +185,14 @@ const inlineFormatting = (
 export const renderInline = (source: string): string => {
   let output = "";
   let index = 0;
+
   while (index < source.length) {
     const token =
       inlineCode(source, index) ??
       inlineLink(source, index, renderInline) ??
       inlineSpoiler(source, index) ??
       inlineFormatting(source, index, renderInline);
+
     if (token) {
       output += token.html;
       index = token.next;
@@ -175,5 +202,6 @@ export const renderInline = (source: string): string => {
       index += 1;
     }
   }
+
   return output;
 };

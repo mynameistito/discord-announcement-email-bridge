@@ -20,17 +20,18 @@ export const updateDeliveryFailure = (
   retryable: boolean,
   claimToken: string
 ) =>
-  d1(() =>
-    env.DB.prepare(
-      "UPDATE deliveries SET status = ?, attempts = attempts + 1, last_error = ?, claim_token = NULL, claim_expires_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status != 'sent' AND claim_token = ?"
-    )
-      .bind(
-        retryable ? "queued" : "failed",
-        error.slice(0, 500),
-        id,
-        claimToken
+  d1(
+    async () =>
+      await env.DB.prepare(
+        "UPDATE deliveries SET status = ?, attempts = attempts + 1, last_error = ?, claim_token = NULL, claim_expires_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status != 'sent' AND claim_token = ?"
       )
-      .run()
+        .bind(
+          retryable ? "queued" : "failed",
+          error.slice(0, 500),
+          id,
+          claimToken
+        )
+        .run()
   ).pipe(Effect.asVoid);
 
 /**
@@ -45,12 +46,13 @@ export const markDeadLetter = (
   id: string,
   generation: string
 ) =>
-  d1(() =>
-    env.DB.prepare(
-      "UPDATE deliveries SET status = 'failed', last_error = 'queue_retry_exhausted', claim_token = NULL, claim_expires_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND generation = ? AND status = 'queued' AND (claim_token IS NULL OR claim_expires_at <= CURRENT_TIMESTAMP)"
-    )
-      .bind(id, generation)
-      .run()
+  d1(
+    async () =>
+      await env.DB.prepare(
+        "UPDATE deliveries SET status = 'failed', last_error = 'queue_retry_exhausted', claim_token = NULL, claim_expires_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND generation = ? AND status = 'queued' AND (claim_token IS NULL OR claim_expires_at <= CURRENT_TIMESTAMP)"
+      )
+        .bind(id, generation)
+        .run()
   ).pipe(Effect.map((result) => result.meta.changes > 0));
 
 /**
@@ -71,23 +73,28 @@ export const claimDelivery = (
   generation: string
 ) =>
   Effect.gen(function* claimDeliveryEffect() {
-    const claimed = yield* d1(() =>
-      env.DB.prepare(
-        "UPDATE deliveries SET claim_token = ?, claim_expires_at = datetime('now', '+2 minutes'), updated_at = CURRENT_TIMESTAMP WHERE id = ? AND announcement_id = ? AND generation = ? AND status IN ('pending', 'queued') AND (claim_token IS NULL OR claim_expires_at <= CURRENT_TIMESTAMP) RETURNING id"
-      )
-        .bind(claimToken, id, announcementId, generation)
-        .first<ClaimRow>()
+    const claimed = yield* d1(
+      async () =>
+        await env.DB.prepare(
+          "UPDATE deliveries SET claim_token = ?, claim_expires_at = datetime('now', '+2 minutes'), updated_at = CURRENT_TIMESTAMP WHERE id = ? AND announcement_id = ? AND generation = ? AND status IN ('pending', 'queued') AND (claim_token IS NULL OR claim_expires_at <= CURRENT_TIMESTAMP) RETURNING id"
+        )
+          .bind(claimToken, id, announcementId, generation)
+          .first<ClaimRow>()
     );
+
     if (claimed) {
       return "claimed" as const;
     }
-    const activeClaim = yield* d1(() =>
-      env.DB.prepare(
-        "SELECT id FROM deliveries WHERE id = ? AND announcement_id = ? AND generation = ? AND status IN ('pending', 'queued') AND claim_token IS NOT NULL AND claim_expires_at > CURRENT_TIMESTAMP"
-      )
-        .bind(id, announcementId, generation)
-        .first<ClaimRow>()
+
+    const activeClaim = yield* d1(
+      async () =>
+        await env.DB.prepare(
+          "SELECT id FROM deliveries WHERE id = ? AND announcement_id = ? AND generation = ? AND status IN ('pending', 'queued') AND claim_token IS NOT NULL AND claim_expires_at > CURRENT_TIMESTAMP"
+        )
+          .bind(id, announcementId, generation)
+          .first<ClaimRow>()
     );
+
     return activeClaim ? ("in_flight" as const) : ("complete" as const);
   });
 

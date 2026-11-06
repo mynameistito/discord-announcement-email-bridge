@@ -13,7 +13,7 @@ The project uses Alchemy to provision a Worker, D1 database, delivery Queues, an
 
 ## Required credentials
 
-The deployment workflow reads the `discord-announcement-email-bridge` item in the `github-actions` 1Password vault. Production deploys use the application fields below. PR previews load only the Cloudflare fields and run without Discord, Resend, or admin credentials, so they are infrastructure previews and cannot poll or send email.
+The deployment workflow reads the `discord-announcement-email-bridge` item in the target `github-actions` 1Password vault (`i56qshgciuy4cdg4pjrilaeriy`). Production deploys use the application fields below. PR previews load only the Cloudflare fields and run without Discord, Resend, or admin credentials, so they are infrastructure previews and cannot poll or send email.
 
 Configure these fields before enabling deployment:
 
@@ -24,13 +24,17 @@ Configure these fields before enabling deployment:
 | `EMAIL_TO`, `RESEND_API_KEY`, `EMAIL_FROM_NAME`, `EMAIL_FROM_EMAIL` | Production email delivery. |
 | `ADMIN_TOKEN` | Production admin routes. |
 
-Also add the repository Actions secret `OP_SERVICE_ACCOUNT_TOKEN`. Scope that 1Password service account to read only the `github-actions` vault. `GITHUB_TOKEN` is provided by GitHub.
+Add the repository Actions secret `OP_TARGET_SERVICE_ACCOUNT_TOKEN` with a 1Password service account scoped to `read_items` on the target `github-actions` vault. The 1Password action receives this secret through its required `OP_SERVICE_ACCOUNT_TOKEN` environment variable. The existing repository secret of that name is separate and is not overwritten. `GITHUB_TOKEN` is provided by GitHub.
 
 Production and PR deployments share the Cloudflare account and API token, but only the trusted deployment workflow receives the deployment credentials. Alchemy isolates each stage's Worker, D1 database, and Queues. Use a test recipient and preview-restricted sender/key for preview work.
 
+Alchemy beta.85 and alchemy-deploy v4 use state-store API v8. Before deploying, identify every client using the account's default Alchemy state store and upgrade those clients to beta.85 or later. A deployment can upgrade the shared store without a prompt; older clients can lose its encryption key. Stage isolation does not establish separate state stores. The repository config uses `state()` without a custom store name; the actual account-wide sharing boundary, state version, encryption key, and namespace must be verified by the operator. Keep deployment disabled until the coordinated migration plan is approved. The beta.85 packages and v4 action have an explicitly authorized exception to the seven-day release-age policy for this coordinated upgrade.
+
+The `workflow_run` deployment workflow runs from the default branch. A pull request's successful CI can therefore trigger the default branch's currently pinned deployment action for a same-repository preview; any changed action pin in the pull request takes effect only after it reaches the default branch. The pull request's build artifact is still used for that preview. Do not treat a draft PR as a deployment-free event.
+
 The Cloudflare API token needs account-scoped write access for Workers Scripts, D1, and Queues. Include Account Settings Read if the token provider requires account metadata lookup. Workers Routes access is not needed unless a custom route or domain is added. See [Cloudflare API token permissions](https://developers.cloudflare.com/fundamentals/api/reference/permissions/) and the [Workers permissions guide](https://developers.cloudflare.com/workers/authorization/workers/).
 
-The manually triggered E2E workflow uses separate non-production fields: `CLOUDFLARE_PREVIEW_API_TOKEN`, `CLOUDFLARE_PREVIEW_ACCOUNT_ID`, `DISCORD_PREVIEW_BOT_TOKEN`, `DISCORD_GUILD_ID`, `DISCORD_E2E_ANNOUNCEMENT_CHANNEL_ID`, `DISCORD_E2E_RECEIVER_CHANNEL_ID`, `EMAIL_TO`, `RESEND_PREVIEW_API_KEY`, `EMAIL_FROM_NAME`, `EMAIL_FROM_EMAIL`, `ADMIN_PREVIEW_TOKEN`, `CF_ACCESS_CLIENT_ID`, and `CF_ACCESS_CLIENT_SECRET`. These fields are for the [live E2E test](operations.md#automated-live-e2e-test), not ordinary PR previews.
+The manually triggered E2E workflow uses non-production fields: `CLOUDFLARE_PREVIEW_API_TOKEN`, `CLOUDFLARE_PREVIEW_ACCOUNT_ID`, `DISCORD_PREVIEW_BOT_TOKEN`, `DISCORD_GUILD_ID`, `DISCORD_E2E_ANNOUNCEMENT_CHANNEL_ID`, `DISCORD_E2E_RECEIVER_CHANNEL_ID`, `E2E_EMAIL_TO`, `RESEND_PREVIEW_API_KEY`, `EMAIL_FROM_NAME`, `EMAIL_FROM_EMAIL`, `ADMIN_PREVIEW_TOKEN`, `CF_ACCESS_CLIENT_ID`, and `CF_ACCESS_CLIENT_SECRET`. The dedicated recipient is exposed to the E2E runtime as `EMAIL_TO`. These fields are for the [live E2E test](operations.md#automated-live-e2e-test), not ordinary PR previews.
 
 ## Manual deployment
 

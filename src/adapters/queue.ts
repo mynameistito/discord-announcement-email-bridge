@@ -48,10 +48,13 @@ export interface QueueOperations {
 
 const isRetryable = (cause: Cause.Cause<unknown>): boolean => {
   const failure = Cause.findErrorOption(cause);
+
   if (failure._tag === "None") {
     return false;
   }
+
   const error = failure.value;
+
   return error instanceof DiscordApiError ||
     error instanceof BridgeInfrastructureError ||
     error instanceof ApiError
@@ -68,7 +71,7 @@ const isRetryable = (cause: Cause.Cause<unknown>): boolean => {
  * @returns A promise that resolves after each message is acknowledged or retried.
  */
 export const processQueue = async (
-  batch: MessageBatch<unknown>,
+  batch: MessageBatch,
   deadLetterQueueName: WorkerEnv["DELIVERY_DEAD_LETTER_QUEUE_NAME"],
   operations: QueueOperations
 ): Promise<void> => {
@@ -77,6 +80,7 @@ export const processQueue = async (
       const payload = Schema.decodeUnknownOption(QueuePayloadSchema)(
         message.body
       );
+
       if (payload._tag === "None") {
         const deadLetter = batch.queue === deadLetterQueueName;
         console.error(
@@ -86,20 +90,26 @@ export const processQueue = async (
               : "queue.invalid_message",
           })
         );
+
         return;
       }
+
       const generation = payload.value.generation ?? "initial";
+
       if (batch.queue === deadLetterQueueName) {
         const exit = await Effect.runPromiseExit(
           operations.failDeadLetter(payload.value.deliveryId, generation)
         );
+
         if (exit._tag === "Failure") {
           console.error(
             JSON.stringify({ event: "delivery.dead_letter_failed" })
           );
           message.retry({ delaySeconds: 60 });
+
           return;
         }
+
         console.error(
           JSON.stringify({
             event: exit.value
@@ -107,9 +117,12 @@ export const processQueue = async (
               : "delivery.dead_letter_deferred",
           })
         );
+
         return;
       }
+
       const claimToken = crypto.randomUUID();
+
       const claim = await Effect.runPromiseExit(
         operations.claimDelivery(
           payload.value.deliveryId,
@@ -118,18 +131,24 @@ export const processQueue = async (
           generation
         )
       );
+
       if (claim._tag === "Failure") {
         console.error(JSON.stringify({ event: "delivery.claim_failed" }));
         message.retry({ delaySeconds: 60 });
+
         return;
       }
+
       if (claim.value === "complete") {
         return;
       }
+
       if (claim.value === "in_flight") {
         message.retry({ delaySeconds: 60 });
+
         return;
       }
+
       const result = await Effect.runPromiseExit(
         operations.delivery(
           claimToken,
@@ -137,12 +156,14 @@ export const processQueue = async (
           payload.value.announcementId
         )
       );
+
       if (result._tag === "Success") {
         return;
       }
 
       const errorMessage = operations.safeError(result.cause);
       const retryable = isRetryable(result.cause);
+
       const recorded = await Effect.runPromiseExit(
         operations.recordFailure(
           payload.value.deliveryId,
@@ -151,6 +172,7 @@ export const processQueue = async (
           claimToken
         )
       );
+
       if (recorded._tag === "Failure") {
         console.error(
           JSON.stringify({

@@ -22,6 +22,7 @@ export const workerStageConfig = (stage: string): WorkerStageConfig => {
 
   const name =
     stage === "prod" ? `${workerBaseName}-prod` : `${workerBaseName}-${stage}`;
+
   if (name.length > 63) {
     throw new Error(
       "Worker names for workers.dev must not exceed 63 characters"

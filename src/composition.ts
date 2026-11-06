@@ -32,13 +32,17 @@ export const poll = async (
   { readonly ok: true } | { readonly ok: false; readonly error: string }
 > => {
   const subscription = subscriptionFromEnv(env);
+
   if (!subscription) {
     return { error: "required_configuration_missing", ok: false };
   }
+
   const seeded = await seedSubscription(env, subscription);
+
   if (seeded._tag === "Failure") {
     return { error: safeError(seeded.cause), ok: false };
   }
+
   const ports = {
     enqueue: (delivery: {
       readonly announcementId: string;
@@ -46,14 +50,16 @@ export const poll = async (
     }) =>
       Effect.tryPromise({
         catch: (cause) => new BridgeInfrastructureError("queue_send", cause),
-        try: () => env.DELIVERY_QUEUE.send(delivery),
+        try: async () => await env.DELIVERY_QUEUE.send(delivery),
       }).pipe(Effect.asVoid),
     repository: makeRepository(env),
     source: makeDiscordSource(env),
   };
+
   const result = await Effect.runPromiseExit(
     pollAll.pipe(Effect.provide(pollingServiceLayer(ports)))
   );
+
   return result._tag === "Success"
     ? { ok: true }
     : { error: safeError(result.cause), ok: false };
@@ -66,7 +72,7 @@ export const poll = async (
  * @param env - Worker bindings for queue and D1 operations.
  * @returns A promise that resolves after batch processing.
  */
-export const consumeQueue = (batch: MessageBatch<unknown>, env: WorkerEnv) => {
+export const consumeQueue = async (batch: MessageBatch, env: WorkerEnv) => {
   const operations: QueueOperations = {
     claimDelivery: (deliveryId, announcementId, claimToken, generation) =>
       claimDeliveryInD1(
@@ -84,7 +90,8 @@ export const consumeQueue = (batch: MessageBatch<unknown>, env: WorkerEnv) => {
       updateDeliveryFailure(env, deliveryId, message, retryable, claimToken),
     safeError,
   };
-  return processQueue(batch, env.DELIVERY_DEAD_LETTER_QUEUE_NAME, operations);
+
+  await processQueue(batch, env.DELIVERY_DEAD_LETTER_QUEUE_NAME, operations);
 };
 
 /**
@@ -95,9 +102,9 @@ export const consumeQueue = (batch: MessageBatch<unknown>, env: WorkerEnv) => {
  * @param discordMessageId - Optional follower-copy ID to scope delivery status to.
  * @returns The selected admin HTTP response.
  */
-export const adminResponse = (
+export const adminResponse = async (
   method: string,
   pathname: string,
   env: WorkerEnv,
   discordMessageId?: string
-) => createAdminResponse(method, pathname, env, poll, discordMessageId);
+) => await createAdminResponse(method, pathname, env, poll, discordMessageId);

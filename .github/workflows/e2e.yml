@@ -107,9 +107,7 @@ jobs:
 
   validate_1password:
     if: >-
-      github.event_name == 'workflow_dispatch' &&
-      github.repository == 'mynameistito/discord-announcement-email-bridge' &&
-      github.ref == 'refs/heads/chore/bridge-age-and-regression-20261106'
+      github.event_name == 'workflow_dispatch' && github.repository == 'mynameistito/discord-announcement-email-bridge' && github.ref == 'refs/heads/chore/bridge-age-and-regression-20261106'
     permissions: {}
     runs-on: ubuntu-24.04
     steps:

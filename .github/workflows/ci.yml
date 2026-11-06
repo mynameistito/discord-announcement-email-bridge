@@ -38,7 +38,7 @@ jobs:
         env:
           TASK_COMMAND: ${{ matrix.command }}
       - name: Upload coverage to Codecov
-        if: matrix.name == 'Test' && env.CODECOV_TOKEN_AVAILABLE == 'true'
+        if: github.event_name == 'push' && matrix.name == 'Test' && env.CODECOV_TOKEN_AVAILABLE == 'true'
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           disable_search: true

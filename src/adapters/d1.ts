@@ -6,6 +6,10 @@ import type { PollingPorts } from "@/application/polling";
 import { BridgeInfrastructureError } from "@/bridge-infrastructure-error";
 import type { Announcement, Subscription } from "@/domain";
 
+/** Query pending deliveries whose announcements still exist, oldest first. */
+export const pendingDeliveriesSql =
+  "SELECT d.id AS delivery_id, d.announcement_id, d.generation FROM deliveries d JOIN announcements a ON a.id = d.announcement_id WHERE d.status = 'pending' ORDER BY d.created_at LIMIT 500";
+
 /**
  * Lift one D1 promise into Effect and normalize failures as retryable
  * infrastructure errors.
@@ -163,9 +167,7 @@ export const makeRepository = (env: WorkerEnv): PollingPorts["repository"] => ({
 
       const result = yield* d1(
         async () =>
-          await env.DB.prepare(
-            "SELECT d.id AS delivery_id, d.announcement_id, d.generation FROM deliveries d JOIN announcements a ON a.id = d.announcement_id WHERE d.status = 'pending' ORDER BY d.created_at LIMIT 500"
-          ).all<DeliveryRow>()
+          await env.DB.prepare(pendingDeliveriesSql).all<DeliveryRow>()
       );
 
       return result.results.map((row) => ({

@@ -3,7 +3,7 @@ import type { D1Fixture } from "@tests/d1-fixture";
 import { Effect } from "effect";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { makeRepository } from "@/adapters/d1";
+import { makeRepository, pendingDeliveriesSql } from "@/adapters/d1";
 import { claimDelivery, markDeadLetter } from "@/adapters/d1-deliveries";
 
 describe("D1 delivery repository", () => {
@@ -59,6 +59,39 @@ describe("D1 delivery repository", () => {
         "INSERT INTO deliveries (id, announcement_id, recipient, status, idempotency_key) VALUES ('orphan', 'missing', 'a@example.test', 'pending', 'orphan-key')"
       ).run()
     ).rejects.toThrow("FOREIGN KEY constraint failed");
+  });
+
+  it("excludes an existing orphan from the pending-deliveries join", async () => {
+    const db = fixture.env.DB;
+
+    await db
+      .prepare(
+        "UPDATE deliveries SET status = 'pending' WHERE id = 'old-delivery'"
+      )
+      .run();
+
+    // Defer the constraint only inside this transaction, then remove the
+    // orphan before commit so the real D1 database retains its FK invariant.
+    const results = await db.batch([
+      db.prepare("PRAGMA defer_foreign_keys = ON"),
+      db.prepare(
+        "INSERT INTO deliveries (id, announcement_id, recipient, status, idempotency_key) VALUES ('orphan', 'missing', 'a@example.test', 'pending', 'orphan-key')"
+      ),
+      db.prepare(
+        "SELECT COUNT(*) AS count FROM deliveries WHERE id = 'orphan'"
+      ),
+      db.prepare(pendingDeliveriesSql),
+      db.prepare("DELETE FROM deliveries WHERE id = 'orphan'"),
+    ]);
+
+    expect(results[2]?.results).toStrictEqual([{ count: 1 }]);
+    expect(results[3]?.results).toStrictEqual([
+      {
+        announcement_id: "old-announcement",
+        delivery_id: "old-delivery",
+        generation: "initial",
+      },
+    ]);
   });
 
   it("joins announcements and returns the oldest 500 pending deliveries", async () => {

@@ -13,7 +13,7 @@ The project uses Alchemy to provision a Worker, D1 database, delivery Queues, an
 
 ## Required credentials
 
-The deployment workflow reads the `discord-announcement-email-bridge` item in the `github-actions` 1Password vault. Production deploys use the application fields below. PR previews load only the Cloudflare fields and run without Discord, Resend, or admin credentials, so they are infrastructure previews and cannot poll or send email.
+The deployment workflow reads the `discord-announcement-email-bridge` item in the target `github-actions` 1Password vault (`i56qshgciuy4cdg4pjrilaeriy`). Production deploys use the application fields below. PR previews load only the Cloudflare fields and run without Discord, Resend, or admin credentials, so they are infrastructure previews and cannot poll or send email.
 
 Configure these fields before enabling deployment:
 
@@ -24,7 +24,7 @@ Configure these fields before enabling deployment:
 | `EMAIL_TO`, `RESEND_API_KEY`, `EMAIL_FROM_NAME`, `EMAIL_FROM_EMAIL` | Production email delivery. |
 | `ADMIN_TOKEN` | Production admin routes. |
 
-Also add the repository Actions secret `OP_SERVICE_ACCOUNT_TOKEN`. Scope that 1Password service account to read only the `github-actions` vault. `GITHUB_TOKEN` is provided by GitHub.
+Add the repository Actions secret `OP_TARGET_SERVICE_ACCOUNT_TOKEN` with a 1Password service account scoped to `read_items` on the target `github-actions` vault. The 1Password action receives this secret through its required `OP_SERVICE_ACCOUNT_TOKEN` environment variable. The existing repository secret of that name is separate and is not overwritten. `GITHUB_TOKEN` is provided by GitHub.
 
 Production and PR deployments share the Cloudflare account and API token, but only the trusted deployment workflow receives the deployment credentials. Alchemy isolates each stage's Worker, D1 database, and Queues. Use a test recipient and preview-restricted sender/key for preview work.
 

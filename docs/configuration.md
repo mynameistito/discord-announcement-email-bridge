@@ -57,4 +57,4 @@ An edited Discord message does not trigger a new email. A deleted message cannot
 
 ## Secret handling
 
-Keep local `.env` files untracked. For GitHub deployments, the deployment workflows load credentials from the `discord-announcement-email-bridge` item in the `github-actions` 1Password vault; the Worker does not read 1Password at runtime. See the [deployment guide](deployment.md) for the required fields and GitHub secret.
+Keep local `.env` files untracked. For GitHub deployments, the deployment workflows load credentials from the `discord-announcement-email-bridge` item in the target `github-actions` 1Password vault; the Worker does not read 1Password at runtime. See the [deployment guide](deployment.md) for the required fields and dedicated GitHub secret.

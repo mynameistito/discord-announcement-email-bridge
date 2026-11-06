@@ -76,9 +76,16 @@ describe("E2E helpers", () => {
     }
   });
 
-  it.each(["targetSentDeliveries", "targetFailedDeliveries"])(
-    "rejects invalid %s before evaluating delivery completion",
-    async (field) => {
+  it.each([
+    ["sentDeliveries", -1],
+    ["failedDeliveries", -1],
+    ["targetSentDeliveries", -1],
+    ["targetFailedDeliveries", -1],
+    ["targetSentDeliveries", 0.5],
+    ["targetFailedDeliveries", 0.5],
+  ])(
+    "rejects invalid %s count %s before evaluating delivery completion",
+    async (field, count) => {
       vi.stubGlobal(
         "fetch",
         async () =>
@@ -87,7 +94,7 @@ describe("E2E helpers", () => {
               Object.fromEntries([
                 ["failedDeliveries", 0],
                 ["sentDeliveries", 0],
-                [field, 0.5],
+                [field, count],
               ])
             )
           )

@@ -13,6 +13,9 @@ type Log = (message: string, tone?: LogTone) => void;
 const hasText = (value: string | undefined): value is string =>
   value !== undefined && value !== "";
 
+const isDeliveryCount = (value: number): boolean =>
+  Number.isSafeInteger(value) && value >= 0;
+
 const WorkerStatusSchema = Schema.Struct({
   failedDeliveries: Schema.Number,
   sentDeliveries: Schema.Number,
@@ -188,8 +191,8 @@ const deliveryStatus = async (
   );
 
   if (
-    !Number.isSafeInteger(status.sentDeliveries) ||
-    !Number.isSafeInteger(status.failedDeliveries)
+    !isDeliveryCount(status.sentDeliveries) ||
+    !isDeliveryCount(status.failedDeliveries)
   ) {
     throw new TypeError(
       "Worker status response contains invalid delivery counts"
@@ -198,9 +201,9 @@ const deliveryStatus = async (
 
   if (
     (status.targetSentDeliveries !== undefined &&
-      !Number.isSafeInteger(status.targetSentDeliveries)) ||
+      !isDeliveryCount(status.targetSentDeliveries)) ||
     (status.targetFailedDeliveries !== undefined &&
-      !Number.isSafeInteger(status.targetFailedDeliveries))
+      !isDeliveryCount(status.targetFailedDeliveries))
   ) {
     throw new TypeError(
       "Worker status response contains invalid delivery counts"

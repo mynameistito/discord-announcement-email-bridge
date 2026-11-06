@@ -5,6 +5,7 @@ import { sendEmail } from "@/adapters/resend";
 
 /** Minimal provider binding required by the Resend adapter contract. */
 const env = { RESEND_API_KEY: "test-resend-key" };
+
 /** Representative rendered email sent by the provider adapter tests. */
 const payload = {
   from: "Bridge <bridge@example.test>",
@@ -23,20 +24,24 @@ describe("Resend adapter", () => {
     const idempotencyKeys: string[] = [];
     let responseStatus = 200;
     let attempts = 0;
-    vi.stubGlobal("fetch", (_input: RequestInfo | URL, init?: RequestInit) => {
-      attempts += 1;
-      idempotencyKeys.push(
-        new Headers(init?.headers).get("Idempotency-Key") ?? ""
-      );
-      return Promise.resolve(
-        Response.json(
-          responseStatus === 200
-            ? { id: "email-123" }
-            : { message: "temporary failure" },
-          { status: responseStatus }
-        )
-      );
-    });
+    vi.stubGlobal(
+      "fetch",
+      async (_input: RequestInfo | URL, init?: RequestInit) => {
+        attempts += 1;
+        idempotencyKeys.push(
+          new Headers(init?.headers).get("Idempotency-Key") ?? ""
+        );
+
+        return await Promise.resolve(
+          Response.json(
+            responseStatus === 200
+              ? { id: "email-123" }
+              : { message: "temporary failure" },
+            { status: responseStatus }
+          )
+        );
+      }
+    );
 
     const result = await Effect.runPromise(
       sendEmail(env, payload, "stable-delivery-key")

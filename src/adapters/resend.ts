@@ -57,17 +57,24 @@ const toResendApiError = (cause: unknown): ApiError => {
   if (cause instanceof ApiError) {
     return cause;
   }
+
   const parsed = Schema.decodeUnknownOption(ResendFailureSchema)(cause);
   const tag = parsed._tag === "Some" ? parsed.value._tag : undefined;
-  const mappedStatus = tag ? errorStatuses.get(tag) : undefined;
+
+  const mappedStatus =
+    tag !== undefined && tag !== "" ? errorStatuses.get(tag) : undefined;
+
   const status = tag === "HttpClientError" ? 503 : (mappedStatus ?? 502);
+
   const retryableStatus =
     status === 408 || status === 409 || status === 423 || status === 429;
+
   const retryable =
     tag === "HttpClientError" ||
     tag === "ResendParseError" ||
     retryableStatus ||
     status >= 500;
+
   return new ApiError(
     `Resend request failed (HTTP ${status})`,
     status,
@@ -92,6 +99,7 @@ const idempotencyHttpClientLayer = (idempotencyKey: string) =>
           ) {
             return setHeader(request, "Idempotency-Key", idempotencyKey);
           }
+
           return request;
         })(client)
       )
@@ -131,13 +139,15 @@ export const sendEmail = (
       new ApiError("Resend configuration is incomplete", 500, false)
     );
   }
+
   return Services.resend.createEmail({ ...payload, to: [...payload.to] }).pipe(
     Effect.flatMap((response) => {
-      if (!response.id?.trim()) {
+      if (response.id === undefined || response.id.trim() === "") {
         return Effect.fail(
           new ApiError("Resend response was missing an email ID", 502, true)
         );
       }
+
       return Effect.succeed({ id: response.id });
     }),
     Retry.none,

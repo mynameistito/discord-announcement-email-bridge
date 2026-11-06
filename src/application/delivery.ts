@@ -23,11 +23,15 @@ const StoredSourceMetadataSchema = Schema.fromJsonString(SourceMetadataSchema);
  * @returns A sanitized subject line of at most 150 characters.
  */
 const emailSubject = (announcement: Announcement): string => {
-  const title = announcement.message.embeds.find((embed) => embed.title)?.title;
+  const title = announcement.message.embeds.find((embed) =>
+    Boolean(embed.title)
+  )?.title;
+
   const safeTitle = (title ?? announcement.message.content)
     .replaceAll(/[\r\n]+/gu, " ")
     .trim()
     .slice(0, 100);
+
   return safeTitle
     ? `[Discord] Announcement — ${safeTitle}`.slice(0, 150)
     : "[Discord] New announcement";
@@ -58,13 +62,15 @@ export const deliver = (
   announcementId: string
 ) =>
   Effect.gen(function* deliverEffect() {
-    const delivery = yield* d1(() =>
-      env.DB.prepare(
-        "SELECT id, announcement_id, recipient, status, idempotency_key FROM deliveries WHERE id = ? AND announcement_id = ?"
-      )
-        .bind(deliveryId, announcementId)
-        .first<DeliveryState>()
+    const delivery = yield* d1(
+      async () =>
+        await env.DB.prepare(
+          "SELECT id, announcement_id, recipient, status, idempotency_key FROM deliveries WHERE id = ? AND announcement_id = ?"
+        )
+          .bind(deliveryId, announcementId)
+          .first<DeliveryState>()
     );
+
     if (
       !delivery ||
       delivery.status === "sent" ||
@@ -72,21 +78,27 @@ export const deliver = (
     ) {
       return;
     }
-    const row = yield* d1(() =>
-      env.DB.prepare(
-        "SELECT normalized_payload, source_metadata, source_guild_id, source_channel_id, source_message_id, follower_webhook_id, subscription_id FROM announcements WHERE id = ?"
-      )
-        .bind(announcementId)
-        .first<AnnouncementRow>()
-    );
-    if (!row) {
-      return yield* Effect.fail(
-        new BridgeInfrastructureError(
-          "load_announcement",
-          "delivery references missing announcement"
+
+    const row = yield* d1(
+      async () =>
+        await env.DB.prepare(
+          "SELECT normalized_payload, source_metadata, source_guild_id, source_channel_id, source_message_id, follower_webhook_id, subscription_id FROM announcements WHERE id = ?"
         )
-      );
-    }
+          .bind(announcementId)
+          .first<AnnouncementRow>()
+    ).pipe(
+      Effect.flatMap((result) =>
+        result === null
+          ? Effect.fail(
+              new BridgeInfrastructureError(
+                "load_announcement",
+                "delivery references missing announcement"
+              )
+            )
+          : Effect.succeed(result)
+      )
+    );
+
     const message = yield* Schema.decodeUnknownEffect(StoredMessageSchema)(
       row.normalized_payload
     ).pipe(
@@ -98,11 +110,14 @@ export const deliver = (
           )
       )
     );
-    const parsedMetadata = row.source_metadata
-      ? Schema.decodeUnknownOption(StoredSourceMetadataSchema)(
-          row.source_metadata
-        )
-      : undefined;
+
+    const parsedMetadata =
+      row.source_metadata !== null && row.source_metadata !== ""
+        ? Schema.decodeUnknownOption(StoredSourceMetadataSchema)(
+            row.source_metadata
+          )
+        : undefined;
+
     const announcement: Announcement = {
       followerWebhookId: row.follower_webhook_id,
       message,
@@ -114,11 +129,13 @@ export const deliver = (
         ? { sourceMetadata: parsedMetadata.value }
         : undefined),
     };
+
     if (!env.EMAIL_FROM_NAME.trim() || !env.EMAIL_FROM_EMAIL.trim()) {
-      return yield* Effect.fail(
+      yield* Effect.fail(
         new ApiError("Email sender configuration is incomplete", 500, false)
       );
     }
+
     const response = yield* sendEmail(
       env,
       {
@@ -130,15 +147,18 @@ export const deliver = (
       },
       delivery.idempotency_key
     );
-    const markedSent = yield* d1(() =>
-      env.DB.prepare(
-        "UPDATE deliveries SET status = 'sent', resend_email_id = ?, attempts = attempts + 1, claim_token = NULL, claim_expires_at = NULL, updated_at = CURRENT_TIMESTAMP, sent_at = CURRENT_TIMESTAMP, last_error = NULL WHERE id = ? AND status != 'sent' AND claim_token = ? RETURNING id"
-      )
-        .bind(response.id, delivery.id, claimToken)
-        .first<DeliveryIdRow>()
+
+    const markedSent = yield* d1(
+      async () =>
+        await env.DB.prepare(
+          "UPDATE deliveries SET status = 'sent', resend_email_id = ?, attempts = attempts + 1, claim_token = NULL, claim_expires_at = NULL, updated_at = CURRENT_TIMESTAMP, sent_at = CURRENT_TIMESTAMP, last_error = NULL WHERE id = ? AND status != 'sent' AND claim_token = ? RETURNING id"
+        )
+          .bind(response.id, delivery.id, claimToken)
+          .first<DeliveryIdRow>()
     );
+
     if (!markedSent) {
-      return yield* Effect.fail(
+      yield* Effect.fail(
         new BridgeInfrastructureError(
           "complete_delivery",
           "delivery claim expired before completion",
@@ -146,6 +166,7 @@ export const deliver = (
         )
       );
     }
+
     yield* Effect.logInfo("delivery.sent", {
       resendEmailId: response.id,
     });
@@ -153,6 +174,7 @@ export const deliver = (
 
 /** Persisted delivery states that are valid when a delivery is loaded. */
 type DeliveryStatus = "pending" | "queued" | "sent" | "failed";
+
 /** D1 row shape required before rendering and sending a delivery. */
 interface DeliveryState {
   readonly id: string;
@@ -160,10 +182,12 @@ interface DeliveryState {
   readonly status: DeliveryStatus;
   readonly idempotency_key: string;
 }
+
 /** Minimal D1 result proving a token-guarded sent update succeeded. */
 interface DeliveryIdRow {
   readonly id: string;
 }
+
 /** D1 announcement fields required to reconstruct the email domain object. */
 interface AnnouncementRow {
   readonly normalized_payload: string;

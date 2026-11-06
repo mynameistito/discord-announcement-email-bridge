@@ -17,9 +17,11 @@ describe("email Markdown rendering", () => {
     const html = renderEmailMarkdown(
       "<img src=x onerror=alert(1)> `**literal**`\n````html\n```\n<b>**literal**</b>\n````"
     );
+
     const fencedBlock = /<pre><code>(?<code>[\s\S]*?)<\/code><\/pre>/u.exec(
       html
     )?.groups?.code;
+
     expect({
       escapedCode: html.includes("&lt;b&gt;**literal**&lt;/b&gt;"),
       escapedHtml: html.includes("&lt;img src=x onerror=alert(1)&gt;"),

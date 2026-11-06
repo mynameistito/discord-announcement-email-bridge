@@ -7,18 +7,24 @@ import type {
   E2EConfig,
   LogTone,
 } from "@tests/e2e/types.ts";
+import { Schema } from "effect";
 
 type Log = (message: string, tone?: LogTone) => void;
+
+const hasText = (value: string | undefined): value is string =>
+  value !== undefined && value !== "";
 
 interface DiscordChannel {
   readonly guild_id: string;
   readonly type: number;
 }
+
 interface DiscordWebhook {
   readonly type: number;
   readonly source_guild?: { readonly id: string } | null;
   readonly source_channel?: { readonly id: string } | null;
 }
+
 interface DiscordMessage {
   readonly id?: string;
   readonly message_reference?: { readonly message_id?: string } | null;
@@ -38,6 +44,65 @@ interface DiscordMessage {
     readonly title?: string;
   }[];
 }
+
+const ChannelSchema = Schema.Struct({
+  guild_id: Schema.String,
+  type: Schema.Number,
+});
+
+const WebhookSourceSchema = Schema.NullOr(Schema.Struct({ id: Schema.String }));
+
+const WebhookSchema = Schema.Struct({
+  source_channel: Schema.optionalKey(WebhookSourceSchema),
+  source_guild: Schema.optionalKey(WebhookSourceSchema),
+  type: Schema.Number,
+});
+
+const ImageSchema = Schema.NullOr(
+  Schema.Struct({ url: Schema.optionalKey(Schema.String) })
+);
+
+const MessageSchema = Schema.Struct({
+  attachments: Schema.optionalKey(
+    Schema.Array(Schema.Struct({ filename: Schema.String }))
+  ),
+  embeds: Schema.optionalKey(
+    Schema.Array(
+      Schema.Struct({
+        author: Schema.optionalKey(
+          Schema.NullOr(
+            Schema.Struct({
+              icon_url: Schema.optionalKey(Schema.String),
+              name: Schema.optionalKey(Schema.String),
+            })
+          )
+        ),
+        fields: Schema.optionalKey(
+          Schema.Array(
+            Schema.Struct({ name: Schema.optionalKey(Schema.String) })
+          )
+        ),
+        footer: Schema.optionalKey(
+          Schema.NullOr(
+            Schema.Struct({
+              icon_url: Schema.optionalKey(Schema.String),
+              text: Schema.optionalKey(Schema.String),
+            })
+          )
+        ),
+        image: Schema.optionalKey(ImageSchema),
+        thumbnail: Schema.optionalKey(ImageSchema),
+        title: Schema.optionalKey(Schema.String),
+      })
+    )
+  ),
+  id: Schema.optionalKey(Schema.String),
+  message_reference: Schema.optionalKey(
+    Schema.NullOr(
+      Schema.Struct({ message_id: Schema.optionalKey(Schema.String) })
+    )
+  ),
+});
 
 const headers = (token: string) => ({
   Authorization: `Bot ${token}`,
@@ -59,42 +124,53 @@ export const verifyDiscord = async (
     `${discordApi}/users/@me`,
     { headers: headers(config.token) },
     "Authenticate preview bot",
-    signal
+    signal,
+    Schema.Struct({ bot: Schema.optionalKey(Schema.Boolean) })
   );
+
   if (user.bot !== true) {
     throw new Error(
       "DISCORD_PREVIEW_BOT_TOKEN did not authenticate a Discord bot account."
     );
   }
+
   log("Authenticated the Discord preview bot.", "success");
+
   const [source, receiver] = await Promise.all([
     jsonRequest<DiscordChannel>(
       `${discordApi}/channels/${config.sourceChannelId}`,
       { headers: headers(config.token) },
       "Read source channel",
-      signal
+      signal,
+      ChannelSchema
     ),
     jsonRequest<DiscordChannel>(
       `${discordApi}/channels/${config.receiverChannelId}`,
       { headers: headers(config.token) },
       "Read receiver channel",
-      signal
+      signal,
+      ChannelSchema
     ),
   ]);
+
   if (source.guild_id !== config.guildId || source.type !== 5) {
     throw new Error(
       "Configured source channel is not an Announcement Channel in DISCORD_GUILD_ID"
     );
   }
+
   if (receiver.guild_id !== config.guildId) {
     throw new Error("Configured receiver channel is not in DISCORD_GUILD_ID");
   }
+
   const webhooks = await jsonRequest<readonly DiscordWebhook[]>(
     `${discordApi}/channels/${config.receiverChannelId}/webhooks`,
     { headers: headers(config.token) },
     "List receiver-channel webhooks",
-    signal
+    signal,
+    Schema.Array(WebhookSchema)
   );
+
   if (
     webhooks.some(
       (webhook) =>
@@ -107,8 +183,10 @@ export const verifyDiscord = async (
       "Receiver channel is following the configured source channel.",
       "success"
     );
+
     return;
   }
+
   throw new Error(
     "E2E receiver channel is not following the configured source announcement channel"
   );
@@ -134,17 +212,20 @@ export const createAnnouncement = async (
   const url = `${discordApi}/channels/${config.sourceChannelId}/messages`;
   const authorization = headers(config.token);
   let init: RequestInit;
+
   if (attachment) {
     const bytes =
       attachment.kind === "bytes"
         ? attachment.bytes
         : await readFile(attachment.path);
+
     const filename =
       attachment.kind === "bytes"
         ? attachment.filename
         : (attachment.filename ??
           attachment.path.split(/[\\/]/u).at(-1) ??
           "fixture.bin");
+
     const form = new FormData();
     form.set("payload_json", JSON.stringify({ content, embeds }));
     const blobBytes = new Uint8Array(bytes.byteLength);
@@ -158,19 +239,31 @@ export const createAnnouncement = async (
       method: "POST",
     };
   }
+
   const created = await jsonRequest<{ readonly id?: string }>(
     url,
     init,
     "Create E2E announcement",
-    signal
+    signal,
+    Schema.Struct({ id: Schema.optionalKey(Schema.String) })
   );
-  if (!created.id) {
+
+  if (!hasText(created.id)) {
     throw new Error(
       `Discord did not return an announcement message ID for ${marker}`
     );
   }
+
   return created.id;
 };
+
+const hasRichMetadata = (
+  embed: NonNullable<DiscordMessage["embeds"]>[number]
+): boolean =>
+  hasText(embed.author?.name) &&
+  hasText(embed.author?.icon_url) &&
+  hasText(embed.footer?.text) &&
+  hasText(embed.footer?.icon_url);
 
 const preservesRichEmbed = (
   message: DiscordMessage,
@@ -178,24 +271,27 @@ const preservesRichEmbed = (
   expectedImageFilename?: string
 ): boolean => {
   const embed = message.embeds?.find((item) => item.title === expectedTitle);
-  if (!embed?.author?.name || !embed.author.icon_url) {
+
+  if (embed === undefined || !hasRichMetadata(embed)) {
     return false;
   }
-  if (!embed.fields?.some((field) => field.name === "Status")) {
+
+  if (embed.fields?.some((field) => field.name === "Status") !== true) {
     return false;
   }
-  if (!embed.footer?.text || !embed.footer.icon_url) {
-    return false;
-  }
+
   const imageUrl = embed.image?.url;
-  if (!imageUrl?.startsWith("https://")) {
+
+  if (imageUrl?.startsWith("https://") !== true) {
     return false;
   }
-  if (expectedImageFilename) {
+
+  if (hasText(expectedImageFilename)) {
     try {
       const imageFilename = decodeURIComponent(
         new URL(imageUrl).pathname.split("/").at(-1) ?? ""
       );
+
       if (imageFilename !== expectedImageFilename) {
         return false;
       }
@@ -203,6 +299,7 @@ const preservesRichEmbed = (
       return false;
     }
   }
+
   return Boolean(embed.thumbnail?.url?.startsWith("https://"));
 };
 
@@ -220,14 +317,19 @@ export const isCompleteFollowerCopy = (
   expectedFilename?: string,
   expectedEmbedTitle?: string
 ): boolean => {
-  if (!message.id || message.message_reference?.message_id !== messageId) {
+  if (
+    !hasText(message.id) ||
+    message.message_reference?.message_id !== messageId
+  ) {
     return false;
   }
-  if (expectedEmbedTitle) {
+
+  if (hasText(expectedEmbedTitle)) {
     return preservesRichEmbed(message, expectedEmbedTitle, expectedFilename);
   }
+
   return (
-    !expectedFilename ||
+    !hasText(expectedFilename) ||
     Boolean(
       message.attachments?.some(({ filename }) => filename === expectedFilename)
     )
@@ -256,16 +358,19 @@ export const crosspostAnnouncement = async (
     `${discordApi}/channels/${config.sourceChannelId}/messages/${messageId}/crosspost`,
     { headers: headers(config.token), method: "POST" },
     "Crosspost E2E announcement",
-    signal
+    signal,
+    MessageSchema
   );
   log("Crossposted announcement; waiting for the follower copy...");
+
   const messages = await waitUntil(
-    (probeSignal) =>
-      jsonRequest<readonly DiscordMessage[]>(
+    async (probeSignal) =>
+      await jsonRequest<readonly DiscordMessage[]>(
         `${discordApi}/channels/${config.receiverChannelId}/messages?limit=100`,
         { headers: headers(config.token), signal: probeSignal },
         "Read receiver messages",
-        signal
+        signal,
+        Schema.Array(MessageSchema)
       ),
     (items) =>
       items.some((item) =>
@@ -281,6 +386,7 @@ export const crosspostAnnouncement = async (
     "Discord follower copy did not become complete with the expected content within 60 seconds",
     signal
   );
+
   const copy = messages.find((item) =>
     isCompleteFollowerCopy(
       item,
@@ -289,10 +395,12 @@ export const crosspostAnnouncement = async (
       expectedEmbedTitle
     )
   );
-  if (!copy?.id) {
+
+  if (copy === undefined || !hasText(copy.id)) {
     throw new Error(
       "Discord follower copy did not become complete with the expected content"
     );
   }
+
   return copy.id;
 };

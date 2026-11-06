@@ -104,6 +104,7 @@ export const pollAll = Effect.gen(function* pollAll() {
   const ports = yield* PollingService;
   const subscriptions = yield* ports.repository.enabledSubscriptions();
   const failures: string[] = [];
+
   for (const subscription of subscriptions) {
     const failure = yield* pollSubscription(ports, subscription).pipe(
       Effect.match({
@@ -111,13 +112,13 @@ export const pollAll = Effect.gen(function* pollAll() {
         onSuccess: () => "",
       })
     );
+
     if (failure) {
       failures.push(failure);
     }
   }
+
   if (failures.length > 0) {
-    return yield* Effect.fail(
-      new Error(`Polling failed: ${failures.join("; ")}`)
-    );
+    yield* Effect.fail(new Error(`Polling failed: ${failures.join("; ")}`));
   }
 });

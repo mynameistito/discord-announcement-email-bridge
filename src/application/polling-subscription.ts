@@ -19,24 +19,29 @@ export const pollSubscription = (
 ) =>
   Effect.gen(function* pollSubscriptionEffect() {
     const cursor = yield* ports.repository.cursor(subscription.id);
+
     if (cursor === undefined) {
       yield* initializeCursor(
         ports,
         subscription.id,
         subscription.destinationChannelId
       );
+
       return;
     }
+
     const history = yield* fetchHistory(
       ports,
       subscription.destinationChannelId,
       cursor
     );
+
     const announcements = yield* classifyMessages(
       ports,
       subscription,
       history.messages
     );
+
     yield* persistAndEnqueue(
       ports,
       subscription,

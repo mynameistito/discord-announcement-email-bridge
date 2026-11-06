@@ -9,7 +9,7 @@ import {
   validateMode,
 } from "@tests/e2e/config.ts";
 import { isCompleteFollowerCopy } from "@tests/e2e/discord.ts";
-import { waitUntil } from "@tests/e2e/http.ts";
+import { jsonRequest, waitUntil } from "@tests/e2e/http.ts";
 import { waitForExit } from "@tests/e2e/local-worker.ts";
 import { photoAttachment } from "@tests/e2e/photo-fixture.ts";
 import {
@@ -18,15 +18,37 @@ import {
   simpleWebhookContent,
 } from "@tests/e2e/types.ts";
 import { normalizedWorkerUrl } from "@tests/e2e/worker.ts";
-import { Effect } from "effect";
-import { describe, expect, it } from "vitest";
+import { Effect, Schema } from "effect";
+import { describe, expect, it, vi } from "vitest";
 
 const delayedProbe = (delay: number) => async () => {
   await pause(delay);
+
   return true;
 };
 
 describe("E2E helpers", () => {
+  it("rejects JSON that does not match the endpoint schema", async () => {
+    vi.stubGlobal(
+      "fetch",
+      async () => await Promise.resolve(Response.json({ id: 42 }))
+    );
+
+    try {
+      await expect(
+        jsonRequest(
+          "https://example.test",
+          {},
+          "Test endpoint",
+          new AbortController().signal,
+          Schema.Struct({ id: Schema.String })
+        )
+      ).rejects.toThrow("Test endpoint returned an invalid response");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("parses profile flags in both supported forms", () => {
     expect(parseProfile(["--profile", "preview"])).toBe("preview");
     expect(parseProfile(["--profile=preview"])).toBe("preview");
@@ -35,6 +57,7 @@ describe("E2E helpers", () => {
       ["--profile --remote", "--profile="].map((argument) => {
         try {
           parseProfile(argument.split(" "));
+
           return "accepted";
         } catch (error) {
           return error instanceof Error ? error.message : "unknown error";
@@ -50,7 +73,9 @@ describe("E2E helpers", () => {
     expect(() => configFromEnvironment({})).toThrow(
       "Missing required E2E configuration"
     );
-    expect(() => validateMode(true, "preview")).toThrow("only for local");
+    expect(() => {
+      validateMode(true, "preview");
+    }).toThrow("only for local");
   });
 
   it("trims trailing slashes from Worker URLs", () => {
@@ -83,9 +108,12 @@ describe("E2E helpers", () => {
     expect(simpleWebhookContent("E2E marker")).toBe(
       "Simple E2E webhook message E2E marker"
     );
-    expect(announcementEmbed("2026-10-05T12:00:00.000Z")).toMatchObject({
+    const embed = announcementEmbed("2026-10-05T12:00:00.000Z");
+
+    expect(embed.author?.icon_url).toContain("discordapp.com");
+    expect(embed.thumbnail?.url).toContain("discordapp.com");
+    expect(embed).toMatchObject({
       author: {
-        icon_url: expect.stringContaining("discordapp.com"),
         name: "E2E announcement author",
       },
       fields: [
@@ -98,7 +126,6 @@ describe("E2E helpers", () => {
       ],
       footer: { text: "E2E webhook embed" },
       image: { url: "attachment://e2e-photo.jpg" },
-      thumbnail: { url: expect.stringContaining("discordapp.com") },
       timestamp: "2026-10-05T12:00:00.000Z",
       title: "E2E rich embed",
     });
@@ -106,9 +133,11 @@ describe("E2E helpers", () => {
 
   it("loads the committed JPEG used by the live Discord upload", async () => {
     const attachment = await Effect.runPromise(photoAttachment);
+
     if (attachment.kind !== "bytes") {
       throw new Error("fixture should load as bytes");
     }
+
     expect(attachment.filename).toBe("e2e-photo.jpg");
     expect(Uint8Array.from(attachment.bytes.subarray(0, 3))).toStrictEqual(
       new Uint8Array([255, 216, 255])
@@ -120,6 +149,7 @@ describe("E2E helpers", () => {
       id: "follower-message",
       message_reference: { message_id: "source-message" },
     };
+
     expect(
       isCompleteFollowerCopy(
         followerCopy,
@@ -188,6 +218,7 @@ describe("E2E helpers", () => {
       ["-e", "setInterval(() => {}, 1000)"],
       { stdio: "ignore" }
     );
+
     try {
       await once(child, "spawn");
       await expect(waitForExit(child, 1)).resolves.toBeFalsy();

@@ -7,11 +7,13 @@ import { renderE2ESummary } from "@scripts/e2e-summary-content.ts";
 
 const requiredEnvironment = (name: string): string => {
   const value = process.env[name];
-  if (!value) {
+
+  if (value === undefined || value === "") {
     throw new Error(
       `Missing required E2E summary environment variable: ${name}`
     );
   }
+
   return value;
 };
 

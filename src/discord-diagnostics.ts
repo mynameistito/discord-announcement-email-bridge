@@ -27,12 +27,14 @@ const safeRoute = (path: string): SafeRoute => {
       requiredPermissions: "VIEW_CHANNEL, READ_MESSAGE_HISTORY",
     };
   }
+
   if (/^\/webhooks\/[^/]+(?:\/[^/?]+)?(?:\?|$)/u.test(path)) {
     return {
       name: "/webhooks/{webhook_id}",
       requiredPermissions: "MANAGE_WEBHOOKS in the destination channel",
     };
   }
+
   return { name: "an endpoint" };
 };
 
@@ -43,12 +45,18 @@ const safeRoute = (path: string): SafeRoute => {
  */
 const discordErrorMessage = (code: number | undefined): string | null => {
   switch (code) {
+    case undefined: {
+      return null;
+    }
+
     case 50_001: {
       return "Missing Access";
     }
+
     case 50_013: {
       return "Missing Permissions";
     }
+
     default: {
       return null;
     }
@@ -70,15 +78,23 @@ export const describeDiscordFailure = (
 ): string => {
   const route = safeRoute(path);
   const message = discordErrorMessage(payload?.code);
-  const messageDetail = message ? `: ${message}` : "";
+
+  const messageDetail =
+    message !== null && message !== "" ? `: ${message}` : "";
+
   const errorDetail = payload
     ? `Discord error ${payload.code}${messageDetail}`
     : "";
+
   const permissionDetail =
-    status === 403 && route.requiredPermissions
+    status === 403 &&
+    route.requiredPermissions !== undefined &&
+    route.requiredPermissions !== ""
       ? `required bot permissions: ${route.requiredPermissions}`
       : "";
+
   const details = [errorDetail, permissionDetail].filter(Boolean).join("; ");
   const detail = details ? ` (${details})` : "";
+
   return `Discord REST GET ${route.name} returned ${status}${detail}`;
 };

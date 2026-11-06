@@ -1,176 +1,84 @@
-import {
-  activeClaimSql,
-  claimSql,
-  d1Result,
-  deadLetterSql,
-  hasActiveClaim,
-  isClaimable,
-  pendingDeliveriesSql,
-  pendingRows,
-  projectRow,
-  recoverExpiredSql,
-} from "@tests/d1-test-support";
-import type {
-  D1Fixture,
-  FakeAnnouncement,
-  FakeDelivery,
-  FakeSubscription,
-} from "@tests/d1-test-support";
+import { readFile, readdir } from "node:fs/promises";
+
+import { Miniflare } from "miniflare";
 
 import type { WorkerEnv } from "@/alchemy.run";
 
-/**
- * Create seeded delivery state and D1 bindings that recognize production SQL.
- * @returns A complete worker environment and its mutable seeded delivery state.
- */
-export const makeD1Fixture = (): D1Fixture => {
-  const subscriptions: FakeSubscription[] = [
-    { enabled: false, id: "disabled-subscription" },
-    { enabled: true, id: "active-subscription" },
-  ];
-  const announcements: FakeAnnouncement[] = [
-    { id: "old-announcement", subscriptionId: "disabled-subscription" },
-    { id: "claim-announcement", subscriptionId: "active-subscription" },
-  ];
-  const deliveries: FakeDelivery[] = [
-    {
-      announcementId: "old-announcement",
-      claimToken: "expired-token",
-      createdAt: 1,
-      expired: true,
-      generation: "initial",
-      id: "old-delivery",
-      status: "queued",
-    },
-    {
-      announcementId: "claim-announcement",
-      claimToken: null,
-      createdAt: 2,
-      expired: false,
-      generation: "initial",
-      id: "claim-delivery",
-      status: "queued",
-    },
-  ];
+/** A local Workers runtime with a migrated D1 database. */
+export interface D1Fixture {
+  readonly env: WorkerEnv;
+  readonly dispose: () => Promise<void>;
+}
 
-  const bindings = {
-    prepare(query: string) {
-      let values: string[] = [];
-      const statement = {
-        all<T>(): Promise<D1Result<T>> {
-          if (query !== pendingDeliveriesSql) {
-            throw new Error(`Unexpected D1 query: ${query}`);
-          }
-          const results = pendingRows<T>(deliveries, announcements);
-          return Promise.resolve(d1Result(results));
-        },
-        bind(...parameters: string[]) {
-          values = parameters;
-          return statement;
-        },
-        first<T>(): Promise<T | null> {
-          if (query === claimSql) {
-            const [token, id, announcementId, generation] = values;
-            if (
-              token === undefined ||
-              id === undefined ||
-              announcementId === undefined ||
-              generation === undefined
-            ) {
-              throw new Error("Missing expected delivery claim bindings");
-            }
-            const delivery = deliveries.find((row) =>
-              isClaimable(row, id, announcementId, generation)
-            );
-            if (!delivery) {
-              return Promise.resolve(null);
-            }
-            delivery.claimToken = token;
-            delivery.expired = false;
-            return Promise.resolve(projectRow<T>({ id: delivery.id }));
-          }
-          if (query === activeClaimSql) {
-            const [id, announcementId, generation] = values;
-            const delivery = deliveries.find((row) =>
-              hasActiveClaim(row, id, announcementId, generation)
-            );
-            return Promise.resolve(
-              delivery ? projectRow<T>({ id: delivery.id }) : null
-            );
-          }
-          throw new Error(`Unexpected D1 query: ${query}`);
-        },
-        run(): Promise<D1Result> {
-          if (query === deadLetterSql) {
-            const [id, generation] = values;
-            const delivery = deliveries.find((row) => {
-              const matchesIdAndGeneration =
-                row.id === id && row.generation === generation;
-              const isUnclaimedOrExpired =
-                row.claimToken === null || row.expired;
-              return (
-                matchesIdAndGeneration &&
-                row.status === "queued" &&
-                isUnclaimedOrExpired
-              );
-            });
-            if (!delivery) {
-              return Promise.resolve(d1Result([], 0));
-            }
-            delivery.status = "failed";
-            delivery.claimToken = null;
-            return Promise.resolve(d1Result([], 1));
-          }
-          if (query !== recoverExpiredSql) {
-            throw new Error(`Unexpected D1 query: ${query}`);
-          }
-          let changes = 0;
-          for (const delivery of deliveries) {
-            if (
-              delivery.status === "queued" &&
-              delivery.claimToken !== null &&
-              delivery.expired
-            ) {
-              delivery.status = "pending";
-              delivery.claimToken = null;
-              changes += 1;
-            }
-          }
-          return Promise.resolve(d1Result([], changes));
-        },
-      };
-      return statement;
-    },
-  };
-  // SAFETY: These tests call only D1 `prepare` methods, modeled above using the production SQL.
-  const DB = bindings as WorkerEnv["DB"];
-  const env: WorkerEnv = {
-    ADMIN_TOKEN: "test-admin-token",
-    BUILD_VERSION: "test-build",
-    DB,
-    DELIVERY_DEAD_LETTER_QUEUE_NAME: "dead-letter",
-    DELIVERY_QUEUE: {
-      metrics: () => Promise.resolve({ backlogBytes: 0, backlogCount: 0 }),
-      send: () =>
-        Promise.resolve({
-          metadata: { metrics: { backlogBytes: 0, backlogCount: 0 } },
-        }),
-      sendBatch: () =>
-        Promise.resolve({
-          metadata: { metrics: { backlogBytes: 0, backlogCount: 0 } },
-        }),
-    },
-    DISCORD_BOT_TOKEN: "test-discord-token",
-    DISCORD_GUILD_ID: "test-guild",
-    DISCORD_TARGET_CHANNEL_ID: "test-channel",
-    EMAIL_FROM_EMAIL: "test@example.test",
-    EMAIL_FROM_NAME: "Test",
-    EMAIL_TO: "recipient@example.test",
-    RESEND_API_KEY: "test-resend-key",
-    SOURCE_CHANNEL_ID: "",
-    SOURCE_GUILD_ID: "",
-    STAGE: "test",
-  };
+/** Start an isolated local D1 database and apply the production migrations. */
+export const makeD1Fixture = async (): Promise<D1Fixture> => {
+  const runtime = new Miniflare({
+    d1Databases: { DB: "bridge-tests" },
+    modules: true,
+    script: 'export default { fetch() { return new Response("ok") } }',
+  });
 
-  return { announcements, deliveries, env, subscriptions };
+  try {
+    const DB = await runtime.getD1Database("DB");
+
+    const migrationDir = new URL("../migrations/", import.meta.url);
+    const entries = await readdir(migrationDir);
+
+    const names = entries.filter((name) => name.endsWith(".sql")).toSorted();
+
+    const migrations = await Promise.all(
+      names.map(
+        async (name) => await readFile(new URL(name, migrationDir), "utf-8")
+      )
+    );
+
+    const statements = migrations.flatMap((sql) =>
+      sql.split(";").flatMap((part) => {
+        const statement = part.trim();
+
+        return statement === "" ? [] : [DB.prepare(statement)];
+      })
+    );
+
+    await DB.batch(statements);
+
+    const env: WorkerEnv = {
+      ADMIN_TOKEN: "test-admin-token",
+      BUILD_VERSION: "test-build",
+      DB,
+      DELIVERY_DEAD_LETTER_QUEUE_NAME: "dead-letter",
+      DELIVERY_QUEUE: {
+        metrics: async () =>
+          await Promise.resolve({ backlogBytes: 0, backlogCount: 0 }),
+        send: async () =>
+          await Promise.resolve({
+            metadata: { metrics: { backlogBytes: 0, backlogCount: 0 } },
+          }),
+        sendBatch: async () =>
+          await Promise.resolve({
+            metadata: { metrics: { backlogBytes: 0, backlogCount: 0 } },
+          }),
+      },
+      DISCORD_BOT_TOKEN: "test-discord-token",
+      DISCORD_GUILD_ID: "test-guild",
+      DISCORD_TARGET_CHANNEL_ID: "test-channel",
+      EMAIL_FROM_EMAIL: "test@example.test",
+      EMAIL_FROM_NAME: "Test",
+      EMAIL_TO: "recipient@example.test",
+      RESEND_API_KEY: "test-resend-key",
+      SOURCE_CHANNEL_ID: "",
+      SOURCE_GUILD_ID: "",
+      STAGE: "test",
+    };
+
+    return {
+      dispose: async () => {
+        await runtime.dispose();
+      },
+      env,
+    };
+  } catch (error) {
+    await runtime.dispose();
+    throw error;
+  }
 };

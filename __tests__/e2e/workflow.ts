@@ -28,10 +28,11 @@ const defaultLog = (message: string, tone: LogTone = "info"): void => {
     success: 32,
     warning: 33,
   };
+
   console.log(
-    process.env.NO_COLOR
-      ? message
-      : `\u001B[${colors[tone]}m${message}\u001B[0m`
+    (process.env.NO_COLOR ?? "") === ""
+      ? `\u001B[${colors[tone]}m${message}\u001B[0m`
+      : message
   );
 };
 
@@ -46,9 +47,13 @@ const stopLocalDevEffect = (
   local: Awaited<ReturnType<typeof startLocalDev>>,
   log: (message: string, tone?: LogTone) => void
 ): Effect.Effect<void, Error> =>
-  attempt(() => stopLocalDev(local.process, log)).pipe(
+  attempt(async () => {
+    await stopLocalDev(local.process, log);
+  }).pipe(
     Effect.tap(() =>
-      Effect.sync(() => log("Stopped local Alchemy dev.", "success"))
+      Effect.sync(() => {
+        log("Stopped local Alchemy dev.", "success");
+      })
     )
   );
 
@@ -62,12 +67,13 @@ const releaseLocalDev = <A, E>(
       if (!Exit.isFailure(exit)) {
         return Effect.fail(cleanupError);
       }
-      return Effect.sync(() =>
+
+      return Effect.sync(() => {
         log(
           `Local Alchemy cleanup failed after the workflow failed: ${cleanupError.message}`,
           "warning"
-        )
-      );
+        );
+      });
     },
     onSuccess: () => Effect.void,
   });
@@ -81,59 +87,84 @@ const runAnnouncement = (
   Effect.gen(function* runAnnouncementEffect() {
     const { config, signal } = options;
     log("Checking Discord channel configuration and follower subscription...");
-    yield* attempt(() => verifyDiscord(config, signal, log));
+    yield* attempt(async () => {
+      await verifyDiscord(config, signal, log);
+    });
     log("Seeding the bridge cursor before publishing the test post...");
-    yield* attempt(() => seedCursor(workerUrl, config, signal));
+    yield* attempt(async () => {
+      await seedCursor(workerUrl, config, signal);
+    });
 
     const marker = crypto.randomUUID();
-    const messageId = yield* attempt(() =>
-      createAnnouncement(
-        config,
-        marker,
-        announcementContent(marker),
-        signal,
-        attachment,
-        [announcementEmbed(new Date().toISOString())]
-      )
+
+    const messageId = yield* attempt(
+      async () =>
+        await createAnnouncement(
+          config,
+          marker,
+          announcementContent(marker),
+          signal,
+          attachment,
+          [announcementEmbed(new Date().toISOString())]
+        )
     );
+
     log(`Created test announcement ${messageId}.`, "success");
+
     const expectedFilename =
       attachment.kind === "bytes"
         ? attachment.filename
         : (attachment.filename ?? attachment.path.split(/[\\/]/u).at(-1));
-    const followerCopyId = yield* attempt(() =>
-      crosspostAnnouncement(
-        config,
-        messageId,
-        signal,
-        log,
-        expectedFilename,
-        "E2E rich embed"
-      )
+
+    const followerCopyId = yield* attempt(
+      async () =>
+        await crosspostAnnouncement(
+          config,
+          messageId,
+          signal,
+          log,
+          expectedFilename,
+          "E2E rich embed"
+        )
     );
+
     log("Follower copy appeared in the receiver channel.", "success");
     const simpleMarker = crypto.randomUUID();
-    const simpleMessageId = yield* attempt(() =>
-      createAnnouncement(
-        config,
-        simpleMarker,
-        simpleWebhookContent(simpleMarker),
-        signal
-      )
+
+    const simpleMessageId = yield* attempt(
+      async () =>
+        await createAnnouncement(
+          config,
+          simpleMarker,
+          simpleWebhookContent(simpleMarker),
+          signal
+        )
     );
+
     log(`Created simple test announcement ${simpleMessageId}.`, "success");
-    const simpleFollowerCopyId = yield* attempt(() =>
-      crosspostAnnouncement(config, simpleMessageId, signal, log)
+
+    const simpleFollowerCopyId = yield* attempt(
+      async () =>
+        await crosspostAnnouncement(config, simpleMessageId, signal, log)
     );
+
     log("Simple follower copy appeared in the receiver channel.", "success");
     log("Polling the bridge for the test crosspost...");
-    yield* attempt(() => pollBridge(workerUrl, config, signal));
-    yield* attempt(() =>
-      waitForDelivery(workerUrl, config, followerCopyId, signal, log)
-    );
-    yield* attempt(() =>
-      waitForDelivery(workerUrl, config, simpleFollowerCopyId, signal, log)
-    );
+    yield* attempt(async () => {
+      await pollBridge(workerUrl, config, signal);
+    });
+    yield* attempt(async () => {
+      await waitForDelivery(workerUrl, config, followerCopyId, signal, log);
+    });
+    yield* attempt(async () => {
+      await waitForDelivery(
+        workerUrl,
+        config,
+        simpleFollowerCopyId,
+        signal,
+        log
+      );
+    });
     log(
       `E2E passed. Discord messages ${messageId} and ${simpleMessageId}; Worker recorded successful Resend deliveries for both.`,
       "success"
@@ -151,19 +182,26 @@ export const runE2E = (options: E2EOptions): Effect.Effect<void, Error> =>
     const log = options.log ?? defaultLog;
     const attachment = options.attachment ?? (yield* photoAttachment);
 
-    if (options.remote) {
+    if (options.remote === true) {
       const remoteUrl = options.workerUrl;
-      if (!remoteUrl) {
+
+      if (remoteUrl === undefined || remoteUrl === "") {
         return yield* Effect.fail(
           new Error("E2E_WORKER_URL is required when E2E_MODE=remote")
         );
       }
-      yield* attempt(() => waitForWorkerReady(remoteUrl, config, signal));
+
+      yield* attempt(async () => {
+        await waitForWorkerReady(remoteUrl, config, signal);
+      });
+
       return yield* runAnnouncement(options, attachment, log, remoteUrl);
     }
 
     return yield* Effect.acquireUseRelease(
-      attempt(() => startLocalDev(config, options.profile, signal, log)),
+      attempt(
+        async () => await startLocalDev(config, options.profile, signal, log)
+      ),
       (local) => runAnnouncement(options, attachment, log, local.url),
       (local, exit) => releaseLocalDev(local, exit, log)
     );

@@ -16,12 +16,15 @@ const statusMark = (outcome: string): string => {
     case "success": {
       return "✅";
     }
+
     case "skipped": {
       return "⏭️";
     }
+
     case "cancelled": {
       return "⏹️";
     }
+
     default: {
       return "❌";
     }
@@ -38,6 +41,7 @@ const summaryHeading = (
         "The complete Discord → Worker → Resend flow completed successfully.",
       ];
     }
+
     return [
       "## ✅ Discord E2E passed",
       "The Discord → Worker → Resend flow passed, but another lifecycle step failed.",
@@ -87,5 +91,6 @@ export const renderE2ESummary = (input: E2ESummaryInput): string => {
     "```",
     "",
   ];
+
   return lines.join("\n");
 };

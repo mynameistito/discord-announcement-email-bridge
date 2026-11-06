@@ -20,9 +20,11 @@ export const idempotencyKey = (
         "SHA-256",
         new TextEncoder().encode(recipient.toLowerCase())
       );
+
       const hash = Array.from(new Uint8Array(digest), (byte) =>
         byte.toString(16).padStart(2, "0")
       ).join("");
+
       return `discord-follow/${announcement.subscriptionId}/${announcement.message.id}/${hash}`;
     },
   });

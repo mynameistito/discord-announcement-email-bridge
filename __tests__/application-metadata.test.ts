@@ -9,6 +9,7 @@ import { DiscordApiError } from "@/discord-api-error";
 describe("announcement source metadata", () => {
   it("delivers announcements when optional metadata is unavailable", async () => {
     const fake = fakePorts([[crosspost("101")]]);
+
     const ports: PollingPorts = {
       ...fake.ports,
       source: {
@@ -29,6 +30,7 @@ describe("announcement source metadata", () => {
   it("deduplicates fallback metadata lookups per source in a poll", async () => {
     const fake = fakePorts([[crosspost("101"), crosspost("102")]]);
     let lookups = 0;
+
     const ports: PollingPorts = {
       ...fake.ports,
       source: {
@@ -36,6 +38,7 @@ describe("announcement source metadata", () => {
         getSourceMetadata: () =>
           Effect.sync(() => {
             lookups += 1;
+
             return { channelName: "announcements", guildName: "News server" };
           }),
       },
@@ -50,6 +53,7 @@ describe("announcement source metadata", () => {
   it("uses source metadata embedded in the follower webhook", async () => {
     const fake = fakePorts([[crosspost("101")]]);
     let fallbackLookups = 0;
+
     const ports: PollingPorts = {
       ...fake.ports,
       source: {
@@ -57,6 +61,7 @@ describe("announcement source metadata", () => {
         getSourceMetadata: () =>
           Effect.sync(() => {
             fallbackLookups += 1;
+
             return { channelName: "fallback", guildName: "fallback" };
           }),
         getWebhook: (id) =>

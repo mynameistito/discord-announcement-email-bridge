@@ -69,6 +69,7 @@ describe("Discord payloads and follower classification", () => {
     const decoded = await Effect.runPromise(
       Schema.decodeUnknownEffect(MessageSchema)(message("100"))
     );
+
     expect(decoded.id).toBe("100");
   });
 
@@ -89,6 +90,7 @@ describe("Discord payloads and follower classification", () => {
       webhook,
       subscription
     );
+
     expect(result?.sourceMessageId).toBe("source-message");
   });
 

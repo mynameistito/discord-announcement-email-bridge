@@ -15,6 +15,7 @@ import type { DiscordMessage } from "@/domain";
 
 /** Minimal payload validator used to advance cursors across malformed messages. */
 const MessageIdSchema = Schema.Struct({ id: Schema.String });
+
 /** Candidate validator for identifying malformed crossposts that must block a cursor. */
 const PotentialCrosspostSchema = Schema.Struct({
   flags: Schema.Number,
@@ -50,12 +51,15 @@ export const initializeCursor = (
 ) =>
   Effect.gen(function* initializeCursorEffect() {
     const latest = yield* ports.source.fetchLatest(channelId);
+
     const ids = latest.flatMap((payload) => {
       const parsed = Schema.decodeUnknownOption(MessageIdSchema)(payload.raw);
+
       return parsed._tag === "Some" && /^\d+$/u.test(parsed.value.id)
         ? [parsed.value.id]
         : [];
     });
+
     yield* ports.repository.initializeCursor(
       subscriptionId,
       ids.toSorted(compareSnowflakes).at(-1) ?? "0"
@@ -71,24 +75,29 @@ const decodePolledMessage = (
   payload: UnparsedDiscordMessage
 ): DecodedPolledMessage => {
   const parsedId = Schema.decodeUnknownOption(MessageIdSchema)(payload.raw);
+
   const id =
     parsedId._tag === "Some" && /^\d+$/u.test(parsedId.value.id)
       ? parsedId.value.id
       : undefined;
+
   const message = Schema.decodeUnknownOption(MessageSchema)(payload.raw);
+
   if (message._tag === "Some") {
     return { _tag: "Message", id: message.value.id, message: message.value };
   }
+
   const possibleCrosspost = Schema.decodeUnknownOption(
     PotentialCrosspostSchema
   )(payload.raw);
+
   if (
     possibleCrosspost._tag === "Some" &&
     hasCrosspostFlag(possibleCrosspost.value.flags)
   ) {
     return {
       _tag: "MalformedCrosspost",
-      ...(id ? { id } : undefined),
+      ...(id !== undefined && id !== "" ? { id } : undefined),
       error: new DiscordApiError(
         "Discord returned a malformed crosspost candidate",
         502,
@@ -96,7 +105,11 @@ const decodePolledMessage = (
       ),
     };
   }
-  return { _tag: "Skip", ...(id ? { id } : undefined) };
+
+  return {
+    _tag: "Skip",
+    ...(id !== undefined && id !== "" ? { id } : undefined),
+  };
 };
 
 /**
@@ -116,47 +129,66 @@ export const fetchHistory = (
     let highWater = cursor;
     const messages: DiscordMessage[] = [];
     let page = yield* ports.source.fetchAfter(channelId, cursor);
+
     for (;;) {
       const pageMessages: DiscordMessage[] = [];
+
       for (const payload of page) {
         const decoded = decodePolledMessage(payload);
-        if (decoded.id && compareSnowflakes(decoded.id, highWater) > 0) {
+
+        if (
+          decoded.id !== undefined &&
+          decoded.id !== "" &&
+          compareSnowflakes(decoded.id, highWater) > 0
+        ) {
           highWater = decoded.id;
         }
+
         if (
           decoded._tag === "MalformedCrosspost" &&
-          (!decoded.id || compareSnowflakes(decoded.id, cursor) > 0)
+          (decoded.id === undefined ||
+            decoded.id === "" ||
+            compareSnowflakes(decoded.id, cursor) > 0)
         ) {
           return yield* Effect.fail(decoded.error);
         }
+
         if (decoded._tag === "Message") {
           pageMessages.push(decoded.message);
         }
       }
+
       messages.push(
         ...pageMessages.filter(
           (message) => compareSnowflakes(message.id, cursor) > 0
         )
       );
+
       const ids = page
         .flatMap((payload) => {
           const parsed = Schema.decodeUnknownOption(MessageIdSchema)(
             payload.raw
           );
+
           return parsed._tag === "Some" && /^\d+$/u.test(parsed.value.id)
             ? [parsed.value.id]
             : [];
         })
         .toSorted(compareSnowflakes);
+
       const [oldest] = ids;
+
       if (
-        !oldest ||
+        oldest === undefined ||
+        oldest === "" ||
         page.length < 100 ||
         compareSnowflakes(oldest, cursor) <= 0
       ) {
         break;
       }
+
       page = yield* ports.source.fetchBefore(channelId, oldest);
     }
+
     return { highWater, messages: oldestFirst(messages) };
   });

@@ -16,8 +16,10 @@ type MutableE2EOptions = {
 };
 
 type ShutdownSignal = "SIGINT" | "SIGTERM";
+
 const controller = new AbortController();
 let receivedSignal: ShutdownSignal | undefined;
+
 const log = (message: string, tone: LogTone = "info"): void => {
   const colors: Record<LogTone, number> = {
     failure: 31,
@@ -25,14 +27,19 @@ const log = (message: string, tone: LogTone = "info"): void => {
     success: 32,
     warning: 33,
   };
-  const renderedMessage = process.env.NO_COLOR
-    ? message
-    : `\u001B[${colors[tone]}m${message}\u001B[0m`;
+
+  const renderedMessage =
+    (process.env.NO_COLOR ?? "") === ""
+      ? `\u001B[${colors[tone]}m${message}\u001B[0m`
+      : message;
+
   console.log(renderedMessage);
 
   const runnerTemp = process.env.RUNNER_TEMP;
-  if (runnerTemp) {
+
+  if (runnerTemp !== undefined && runnerTemp !== "") {
     const logPath = path.join(runnerTemp, "e2e.log");
+
     try {
       appendFileSync(logPath, `${message}\n`, "utf-8");
     } catch {
@@ -40,37 +47,54 @@ const log = (message: string, tone: LogTone = "info"): void => {
     }
   }
 };
+
 const requestShutdown = (signal: ShutdownSignal): void => {
   if (controller.signal.aborted) {
     return;
   }
+
   receivedSignal = signal;
   log(`Received ${signal}; shutting down...`, "warning");
   controller.abort(new Error(`E2E run interrupted by ${signal}`));
 };
-const handleSigint = (): void => requestShutdown("SIGINT");
-const handleSigterm = (): void => requestShutdown("SIGTERM");
+
+const handleSigint = (): void => {
+  requestShutdown("SIGINT");
+};
+
+const handleSigterm = (): void => {
+  requestShutdown("SIGTERM");
+};
+
 process.once("SIGINT", handleSigint);
+
 process.once("SIGTERM", handleSigterm);
 
 let exitCode = 0;
+
 try {
   const profile = parseProfile(process.argv.slice(2));
   const remote = process.env.E2E_MODE === "remote";
   validateMode(remote, profile);
   const config = configFromEnvironment(process.env);
+
   const options: MutableE2EOptions = {
     config,
     log,
     remote,
     signal: controller.signal,
   };
-  if (process.env.E2E_WORKER_URL) {
-    options.workerUrl = process.env.E2E_WORKER_URL;
+
+  const workerUrl = process.env.E2E_WORKER_URL;
+
+  if (workerUrl !== undefined && workerUrl !== "") {
+    options.workerUrl = workerUrl;
   }
-  if (profile) {
+
+  if (profile !== undefined && profile !== "") {
     options.profile = profile;
   }
+
   await Effect.runPromise(runE2E(options));
 } catch (error) {
   if (controller.signal.aborted) {
@@ -92,11 +116,14 @@ try {
 }
 
 let exitTone: LogTone = "failure";
+
 if (exitCode === 0) {
   exitTone = "success";
 } else if (exitCode === 130 || exitCode === 143) {
   exitTone = "warning";
 }
+
 log(`E2E script exiting with code ${exitCode}.`, exitTone);
+
 // All deliberate cleanup has completed; avoid lingering runtime handles.
 process.exit(exitCode);

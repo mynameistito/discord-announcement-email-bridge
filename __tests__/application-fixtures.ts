@@ -65,15 +65,18 @@ export const fakePorts = (
   const beforeValues: string[] = [];
   let beforeIndex = 0;
   let enqueueAttempts = 0;
+
   const ports: PollingPorts = {
     enqueue: (delivery) =>
       Effect.suspend(() => {
         enqueueAttempts += 1;
+
         if (enqueueAttempts <= failEnqueueCount) {
           return Effect.fail(
             new BridgeInfrastructureError("queue_send", "test failure", true)
           );
         }
+
         return Effect.sync(() => {
           queued.push(delivery.deliveryId);
         });
@@ -93,13 +96,17 @@ export const fakePorts = (
         }),
       pendingDeliveries: () =>
         Effect.succeed(
-          [...discovered.values()]
-            .filter((id) => !marked.has(id))
-            .map((id) => ({
-              announcementId: `announcement-${id}`,
-              deliveryId: `delivery-${id}`,
-              generation: "initial",
-            }))
+          [...discovered.values()].flatMap((id) =>
+            marked.has(id)
+              ? []
+              : [
+                  {
+                    announcementId: `announcement-${id}`,
+                    deliveryId: `delivery-${id}`,
+                    generation: "initial",
+                  },
+                ]
+          )
         ),
       persistDiscoveryBatch: (_subscription, discoveredBatch, cursor) =>
         Effect.sync(() => {
@@ -107,6 +114,7 @@ export const fakePorts = (
             discovered.set(item.message.id, item.message.id);
             storedAnnouncements.push(item);
           }
+
           cursorValue = cursor;
         }),
     },
@@ -116,6 +124,7 @@ export const fakePorts = (
       fetchBefore: (_channelId, before) => {
         beforeIndex += 1;
         beforeValues.push(before);
+
         return Effect.succeed(
           (pages[beforeIndex] ?? []).map((raw) => ({ raw }))
         );
@@ -135,6 +144,7 @@ export const fakePorts = (
         }),
     },
   };
+
   return {
     beforeValues: () => beforeValues,
     cursor: () => (initialized ? (cursorValue ?? "0") : undefined),

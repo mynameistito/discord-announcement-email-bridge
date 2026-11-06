@@ -17,6 +17,7 @@ const subscription: Subscription = {
 describe("polling history pagination", () => {
   it("does not advance the cursor when a later page fails", async () => {
     let persisted = false;
+
     const ports: PollingPorts = {
       enqueue: () => Effect.void,
       repository: {
@@ -56,6 +57,7 @@ describe("polling history pagination", () => {
 
   it("does not advance past an incomplete crosspost missing its webhook", async () => {
     let persisted = false;
+
     const ports: PollingPorts = {
       enqueue: () => Effect.void,
       repository: {

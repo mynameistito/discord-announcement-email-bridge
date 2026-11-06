@@ -63,7 +63,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: op://i56qshgciuy4cdg4pjrilaeriy/huou7uzehzinkmpm3le3gfimme/yq5irxnmhobzqfx2knbytjtrc4
 
       - name: Run Alchemy deployment
-        uses: mynameistito/alchemy-deploy@0db293d18c4d6d99926cd74488f7eb6a26aa73bc # v4.0.0
+        uses: mynameistito/alchemy-deploy@4e29a36d61cf8cc4277bdcd35d7b3eff13150b38 # v3.2.0
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ steps.op_production.outputs.CLOUDFLARE_ACCOUNT_ID || steps.op_preview.outputs.CLOUDFLARE_ACCOUNT_ID || steps.op_cleanup.outputs.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ steps.op_production.outputs.CLOUDFLARE_API_TOKEN || steps.op_preview.outputs.CLOUDFLARE_API_TOKEN || steps.op_cleanup.outputs.CLOUDFLARE_API_TOKEN }}

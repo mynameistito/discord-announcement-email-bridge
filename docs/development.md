@@ -3,6 +3,7 @@
 ## Requirements
 
 - Bun 1.4.4
+- tsrs 0.20.1-ts7.1.0-beta for typechecking (installed with project dependencies)
 - A local copy of the repository
 - Non-production credentials if you run the Worker against Discord, Cloudflare, or Resend
 

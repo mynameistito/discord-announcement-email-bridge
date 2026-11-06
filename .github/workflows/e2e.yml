@@ -32,7 +32,7 @@ jobs:
           DISCORD_GUILD_ID: op://i56qshgciuy4cdg4pjrilaeriy/huou7uzehzinkmpm3le3gfimme/ksw5s6oa5cdjd2zgj4hv6pnzjq
           DISCORD_E2E_ANNOUNCEMENT_CHANNEL_ID: op://i56qshgciuy4cdg4pjrilaeriy/huou7uzehzinkmpm3le3gfimme/j7kkoyn3d4oth4yciqni7qyhui
           DISCORD_E2E_RECEIVER_CHANNEL_ID: op://i56qshgciuy4cdg4pjrilaeriy/huou7uzehzinkmpm3le3gfimme/5dfywo6mrp2mfags4dxmsj4ale
-          EMAIL_TO: op://i56qshgciuy4cdg4pjrilaeriy/huou7uzehzinkmpm3le3gfimme/yzl63k2lbake4onxejnbgwv3re
+          EMAIL_TO: op://i56qshgciuy4cdg4pjrilaeriy/huou7uzehzinkmpm3le3gfimme/e2e_email_to
           RESEND_PREVIEW_API_KEY: op://i56qshgciuy4cdg4pjrilaeriy/huou7uzehzinkmpm3le3gfimme/2dz4hpmhrtykmb3yaawfh5gemu
           EMAIL_FROM_NAME: op://i56qshgciuy4cdg4pjrilaeriy/huou7uzehzinkmpm3le3gfimme/rlylwe6lukzgenapthsykqsr2a
           EMAIL_FROM_EMAIL: op://i56qshgciuy4cdg4pjrilaeriy/huou7uzehzinkmpm3le3gfimme/ov4be76yq67mlf4zrxnwabwiom

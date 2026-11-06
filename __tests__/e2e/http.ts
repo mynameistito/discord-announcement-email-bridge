@@ -129,6 +129,7 @@ export const jsonRequest = async <T>(
 
     return Schema.decodeUnknownSync(schema)(payload);
   } catch {
+    (init.signal ?? signal).throwIfAborted();
     throw new Error(`${label} returned an invalid response`);
   }
 };

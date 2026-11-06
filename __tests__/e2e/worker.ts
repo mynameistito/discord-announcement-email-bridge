@@ -196,6 +196,17 @@ const deliveryStatus = async (
     );
   }
 
+  if (
+    (status.targetSentDeliveries !== undefined &&
+      !Number.isSafeInteger(status.targetSentDeliveries)) ||
+    (status.targetFailedDeliveries !== undefined &&
+      !Number.isSafeInteger(status.targetFailedDeliveries))
+  ) {
+    throw new TypeError(
+      "Worker status response contains invalid delivery counts"
+    );
+  }
+
   return status;
 };
 

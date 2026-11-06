@@ -17,7 +17,7 @@ import {
   announcementEmbed,
   simpleWebhookContent,
 } from "@tests/e2e/types.ts";
-import { normalizedWorkerUrl } from "@tests/e2e/worker.ts";
+import { normalizedWorkerUrl, waitForDelivery } from "@tests/e2e/worker.ts";
 import { Effect, Schema } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
@@ -48,6 +48,80 @@ describe("E2E helpers", () => {
       vi.unstubAllGlobals();
     }
   });
+
+  it("preserves cancellation while reading a response body", async () => {
+    const controller = new AbortController();
+    const reason = new Error("request cancelled");
+    const response = new Response("{}");
+
+    vi.spyOn(response, "json").mockImplementation(async () => {
+      controller.abort(reason);
+
+      return await Promise.reject(reason);
+    });
+    vi.stubGlobal("fetch", async () => await Promise.resolve(response));
+
+    try {
+      const result = jsonRequest(
+        "https://example.test",
+        { signal: controller.signal },
+        "Test endpoint",
+        new AbortController().signal,
+        Schema.Struct({ id: Schema.String })
+      );
+
+      await expect(result).rejects.toBe(reason);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it.each(["targetSentDeliveries", "targetFailedDeliveries"])(
+    "rejects invalid %s before evaluating delivery completion",
+    async (field) => {
+      vi.stubGlobal(
+        "fetch",
+        async () =>
+          await Promise.resolve(
+            Response.json(
+              Object.fromEntries([
+                ["failedDeliveries", 0],
+                ["sentDeliveries", 0],
+                [field, 0.5],
+              ])
+            )
+          )
+      );
+
+      try {
+        const config = configFromEnvironment({
+          ADMIN_PREVIEW_TOKEN: "test",
+          DISCORD_E2E_ANNOUNCEMENT_CHANNEL_ID: "test",
+          DISCORD_E2E_RECEIVER_CHANNEL_ID: "test",
+          DISCORD_GUILD_ID: "test",
+          DISCORD_PREVIEW_BOT_TOKEN: "test",
+          EMAIL_FROM_EMAIL: "test@example.test",
+          EMAIL_FROM_NAME: "Test",
+          EMAIL_TO: "test@example.test",
+          RESEND_PREVIEW_API_KEY: "test",
+        });
+
+        await expect(
+          waitForDelivery(
+            "https://example.test",
+            config,
+            "test",
+            new AbortController().signal,
+            () => {}
+          )
+        ).rejects.toThrow(
+          "Worker status response contains invalid delivery counts"
+        );
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    }
+  );
 
   it("parses profile flags in both supported forms", () => {
     expect(parseProfile(["--profile", "preview"])).toBe("preview");
